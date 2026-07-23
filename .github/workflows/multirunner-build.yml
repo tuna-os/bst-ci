@@ -67,7 +67,11 @@ env:
   # always explicitly set, but explicitly passing "x86_64" on an x86_64
   # runner is behaviorally identical to auto-detection — this only changes
   # anything when arch=aarch64 is passed.
-  BST_ARCH: ${{ inputs.arch }}
+  # Empty string for the default x86_64 path, matching the pre-arch-input
+  # behavior exactly (BST_ARCH was previously unset, and ci-build-matrix.py's
+  # `if arch:` check treats "" the same as unset) — the aarch64 path is the
+  # only one that ever sees a non-empty value here.
+  BST_ARCH: ${{ inputs.arch != 'x86_64' && inputs.arch || '' }}
   # x86_64 stays unsuffixed so existing GHCR cache tags for current
   # consumers (tromso, xfce-linux) keep resolving — only a non-x86_64 arch
   # gets its own cache namespace.
