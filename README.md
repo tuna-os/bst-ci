@@ -35,8 +35,27 @@ jobs:
 `scripts/ci-build-matrix.py` (also in this repo) is what `multirunner-build.yml`
 runs inside the pinned `bst2` container to split uncached elements into a
 core set + `num_chunks` round-robin chunks with composite cache keys. It's
-a plain script with no repo-specific assumptions, invoked by path inside
-the container — nothing to reference directly from a consumer workflow.
+a plain script with no repo-specific assumptions — `multirunner-build.yml`
+checks this repo out into `.bst-ci/` alongside the caller's own checkout
+and invokes it from there, so **consumers should not carry their own copy**
+of this script (tromso and xfce-linux both used to; both had it removed
+once this workflow stopped needing it).
+
+## Verification without a build
+
+Both scripts and workflows here are checked without needing BuildStream,
+podman, or a real chunked build to run:
+
+- `tests/pytest/` — unit tests for the pure functions in
+  `ci-build-matrix.py`, plus CLI-level tests that drive the script as a
+  subprocess against a synthetic `build-plan.txt` (no `bst show` required).
+  Run locally: `pytest tests/pytest/ -v`.
+- `actionlint` + `yamllint` on every workflow file, including this repo's
+  own `.github/workflows/test.yml` (dogfooded — this repo lints itself).
+- Before changing the `workflow_call` `inputs:`/`outputs:` contract,
+  grep both consumers for `with:` keys and `needs.multirunner.outputs.*`
+  usages to make sure nothing here silently stops matching what they
+  expect — GitHub doesn't validate that across repos for you.
 
 ## Scope
 

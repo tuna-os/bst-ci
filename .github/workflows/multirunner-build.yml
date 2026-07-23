@@ -71,6 +71,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # This job's own scripts/ci-build-matrix.py, checked out alongside
+      # (not merged into) the caller's tree — the caller shouldn't need to
+      # carry a copy of this script just to use this reusable workflow.
+      - name: Checkout bst-ci scripts
+        uses: actions/checkout@v7
+        with:
+          repository: tuna-os/bst-ci
+          ref: main
+          path: .bst-ci
+
       - run: podman pull "$BST2_IMAGE"
 
       - name: Setup Just
@@ -97,7 +107,7 @@ jobs:
             -v "${{ github.workspace }}/.cache/buildstream:/root/.cache/buildstream:rw" \
             -w /src \
             "$BST2_IMAGE" \
-            python3 /src/scripts/ci-build-matrix.py "$BST_TARGET" \
+            python3 /src/.bst-ci/scripts/ci-build-matrix.py "$BST_TARGET" \
               "$NUM_CHUNKS" "$CORE_SPLIT" > matrix.json
 
           cat matrix.json

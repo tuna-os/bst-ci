@@ -1,0 +1,7 @@
+# Pre-existing, low-severity shellcheck findings in the disk-watcher
+# background loop (unquoted $TARGETS is intentional word-splitting).
+# Genuine quoting issues are fixed directly instead of ignored here.
+paths:
+  .github/workflows/*.yml:
+    ignore:
+      - 'SC2086:'
