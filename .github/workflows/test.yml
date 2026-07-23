@@ -56,6 +56,6 @@ jobs:
         with:
           python-version: '3.14'
       - name: Install dependencies
-        run: pip install pytest
+        run: pip install pytest pyyaml
       - name: Run pytest (offline, no BuildStream/podman required)
         run: pytest tests/pytest/ -v --tb=short
