@@ -36,6 +36,11 @@ on:
         required: false
         type: string
         default: '200'
+      arch:
+        description: 'Target architecture ("x86_64" or "aarch64"). x86_64 caches are unsuffixed for backward compatibility with existing GHCR cache tags; aarch64 gets an -aarch64 suffix so the two never collide.'
+        required: false
+        type: string
+        default: 'x86_64'
     outputs:
       matrix_keys:
         description: 'JSON array of chunk names, for the caller to re-download/merge CAS in build_final'
@@ -56,11 +61,22 @@ env:
   BST2_IMAGE: ${{ inputs.bst2_image }}
   NUM_CHUNKS: ${{ inputs.num_chunks }}
   CORE_SPLIT: ${{ inputs.core_split }}
+  # ci-build-matrix.py's get_build_plan() reads BST_ARCH and passes
+  # `-o arch $BST_ARCH` to `bst show`. Previously this env var was simply
+  # unset, letting bst auto-detect the (x86_64) runner's own arch; now it's
+  # always explicitly set, but explicitly passing "x86_64" on an x86_64
+  # runner is behaviorally identical to auto-detection — this only changes
+  # anything when arch=aarch64 is passed.
+  BST_ARCH: ${{ inputs.arch }}
+  # x86_64 stays unsuffixed so existing GHCR cache tags for current
+  # consumers (tromso, xfce-linux) keep resolving — only a non-x86_64 arch
+  # gets its own cache namespace.
+  ARCH_SUFFIX: ${{ inputs.arch != 'x86_64' && format('-{0}', inputs.arch) || '' }}
 
 jobs:
   # ── Phase 1: Plan ────────────────────────────────────────────────────
   planning:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 90
     outputs:
       matrix_keys: ${{ steps.matrix.outputs.matrix_keys }}
@@ -127,7 +143,7 @@ jobs:
   build_core:
     needs: planning
     if: needs.planning.outputs.core_targets != ''
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 360
     permissions:
       contents: read
@@ -165,7 +181,7 @@ jobs:
         run: |
           mkdir -p ~/.cache/buildstream
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          CORE_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}-core:latest"
+          CORE_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-core:latest"
           if oras pull "$CORE_REF" -o .; then
             if [ -f cas-core.tar.zst ]; then
               zstd -d -c -T0 cas-core.tar.zst | tar -xf - -C "$HOME/.cache/buildstream"
@@ -189,7 +205,7 @@ jobs:
         if: always()
         run: |
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          CORE_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}-core:latest"
+          CORE_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-core:latest"
           podman run --rm \
             -v "$HOME/.cache/buildstream:/input:ro" \
             -v "${{ github.workspace }}:/output:rw" \
@@ -200,7 +216,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: build-logs-${{ env.IMAGE_NAME }}-core
+          name: build-logs-${{ env.IMAGE_NAME }}${{ env.ARCH_SUFFIX }}-core
           path: logs/
           retention-days: 7
           if-no-files-found: ignore
@@ -209,7 +225,7 @@ jobs:
   build_deps:
     needs: [planning, build_core]
     if: always() && !contains(needs.*.result, 'failure') && needs.planning.outputs.matrix_keys != '[]'
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     timeout-minutes: 360
     permissions:
       contents: read
@@ -255,7 +271,7 @@ jobs:
         if: env.CHUNK_CACHE_KEY != '' && env.CHUNK_CACHE_KEY != 'null'
         run: |
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          CHUNK_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}-${{ matrix.chunk }}:${CHUNK_CACHE_KEY}"
+          CHUNK_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-${{ matrix.chunk }}:${CHUNK_CACHE_KEY}"
           if oras manifest fetch "$CHUNK_REF" > /dev/null 2>&1; then
             echo "cache_hit=true" >> "$GITHUB_OUTPUT"
           else
@@ -267,7 +283,7 @@ jobs:
         run: |
           mkdir -p ~/.cache/buildstream
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          if oras pull "ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}-core:latest" -o .; then
+          if oras pull "ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-core:latest" -o .; then
             if [ -f cas-core.tar.zst ]; then
               zstd -d -c -T0 cas-core.tar.zst | tar -xf - -C "$HOME/.cache/buildstream"
               rm -f cas-core.tar.zst
@@ -279,7 +295,7 @@ jobs:
         continue-on-error: true
         run: |
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          LATEST_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}-${{ matrix.chunk }}:latest"
+          LATEST_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-${{ matrix.chunk }}:latest"
           if oras pull "$LATEST_REF" -o .; then
             if [ -f cas-${{ matrix.chunk }}.tar.zst ]; then
               mkdir -p ~/.cache/buildstream
@@ -320,8 +336,8 @@ jobs:
         if: always() && steps.cache_check.outputs.cache_hit != 'true' && steps.build.outputs.skipped != 'true' && env.CHUNK_CACHE_KEY != '' && env.CHUNK_CACHE_KEY != 'null'
         run: |
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          LATEST_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}-${{ matrix.chunk }}:latest"
-          CHUNK_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}-${{ matrix.chunk }}:${CHUNK_CACHE_KEY}"
+          LATEST_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-${{ matrix.chunk }}:latest"
+          CHUNK_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-${{ matrix.chunk }}:${CHUNK_CACHE_KEY}"
           podman run --rm \
             -v "$HOME/.cache/buildstream:/input:ro" \
             -v "${{ github.workspace }}:/output:rw" \
@@ -334,7 +350,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: build-logs-${{ env.IMAGE_NAME }}-${{ matrix.chunk }}
+          name: build-logs-${{ env.IMAGE_NAME }}${{ env.ARCH_SUFFIX }}-${{ matrix.chunk }}
           path: logs/
           retention-days: 7
           if-no-files-found: ignore
