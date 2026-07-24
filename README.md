@@ -56,6 +56,43 @@ podman, or a real chunked build to run:
   grep both consumers for `with:` keys and `needs.multirunner.outputs.*`
   usages to make sure nothing here silently stops matching what they
   expect — GitHub doesn't validate that across repos for you.
+- `scripts/lint_bst.py` — static lint for `.bst` element files (see below).
+
+### `scripts/lint_bst.py`
+
+Catches two classes of mistake in new/changed `.bst` files without
+BuildStream, a junction fetch, or a real build:
+
+1. **Structural**: valid YAML, `kind:` is a recognized BuildStream plugin
+   kind (catches typos like `kind: meason`).
+2. **Cross-reference**: every junction-qualified dependency (anything with
+   a `:` in it, e.g. `freedesktop-sdk.bst:components/foo.bst`) named by a
+   new/changed file is checked against every `.bst` file already in the
+   tree. A dependency referenced nowhere else is flagged — it may not
+   actually exist in the junctioned project; this script only knows
+   whether *this* codebase has ever successfully referenced it before, not
+   whether it's real. It found exactly this kind of gap on first use:
+   scaffolding `cage.bst` for tuna-os/xfce-linux#39 referenced
+   `freedesktop-sdk.bst:components/wlroots.bst`, which nothing else in
+   either `tromso` or `xfce-linux` had ever depended on — worth a second
+   look before that PR merges.
+
+```sh
+# Lint an entire tree (structural checks only):
+python3 scripts/lint_bst.py path/to/elements
+
+# Also flag unconfirmed dependencies introduced by specific new/changed files:
+python3 scripts/lint_bst.py path/to/elements --check-new path/to/elements/foo/new-thing.bst
+
+# In CI, pair --check-new with a diff against the PR's base branch to
+# scope it to files actually touched by the PR, e.g.:
+#   git diff --name-only --diff-filter=AM origin/main... -- '*.bst'
+```
+
+Exits 0 unless a structural error is found (invalid YAML, missing `kind:`);
+unconfirmed-dependency findings are warnings by default since they're a
+"go check this" signal, not a certain failure — pass `--strict` to make
+them fatal once you've built confidence in the false-positive rate.
 
 ## Scope
 
