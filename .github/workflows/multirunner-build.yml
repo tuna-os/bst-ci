@@ -80,7 +80,7 @@ env:
 jobs:
   # ── Phase 1: Plan ────────────────────────────────────────────────────
   planning:
-    runs-on: ${{ inputs.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    runs-on: ${{ inputs.arch == 'aarch64' && format('runs-on={0}/runner=build-arm64', github.run_id) || format('runs-on={0}/runner=build-amd64', github.run_id) }}
     timeout-minutes: 90
     outputs:
       matrix_keys: ${{ steps.matrix.outputs.matrix_keys }}
@@ -147,7 +147,7 @@ jobs:
   build_core:
     needs: planning
     if: needs.planning.outputs.core_targets != ''
-    runs-on: ${{ inputs.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    runs-on: ${{ inputs.arch == 'aarch64' && format('runs-on={0}/runner=build-arm64', github.run_id) || format('runs-on={0}/runner=build-amd64', github.run_id) }}
     timeout-minutes: 360
     permissions:
       contents: read
@@ -229,7 +229,7 @@ jobs:
   build_deps:
     needs: [planning, build_core]
     if: always() && !contains(needs.*.result, 'failure') && needs.planning.outputs.matrix_keys != '[]'
-    runs-on: ${{ inputs.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    runs-on: ${{ inputs.arch == 'aarch64' && format('runs-on={0}/runner=build-arm64', github.run_id) || format('runs-on={0}/runner=build-amd64', github.run_id) }}
     timeout-minutes: 360
     permissions:
       contents: read
