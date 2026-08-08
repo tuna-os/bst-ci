@@ -36,6 +36,54 @@ on:
         required: false
         type: string
         default: '200'
+      extra_core_targets:
+        description: >-
+          Space-separated extra elements to build in build_core, in addition to
+          the first `core_split` elements of the build plan. These are appended
+          to the core job's targets only — the chunk matrix, chunk names and
+          chunk cache keys are computed from `core_split` alone and are NOT
+          affected, so adding targets here never invalidates an existing GHCR
+          chunk cache. Use it for elements that many chunks transitively depend
+          on and would otherwise each rebuild (LLVM, Rust, WebKit, Qt): once
+          core has them, every chunk gets them from the shared core CAS.
+        required: false
+        type: string
+        default: ''
+      core_budget_minutes:
+        description: >-
+          Wall-clock budget for the `bst build` inside build_core, in minutes.
+          Must stay far enough inside the 360-minute job timeout for the CAS
+          archive+push that follows it to complete.
+        required: false
+        type: string
+        default: '270'
+      soft_core_budget:
+        description: >-
+          Treat build_core exhausting its budget (exit code 124) as a warning
+          rather than a job failure. build_core is a cache-warming job: its
+          partial CAS is pushed either way and the next run resumes from it, so
+          when core is deliberately given more work than fits in one job (see
+          extra_core_targets) the timeout is an expected checkpoint, not a
+          fault. Only exit code 124 is softened — a real build error still fails
+          the job, and build_final still has to build the target for anything to
+          be published.
+        required: false
+        type: boolean
+        default: false
+      runner_label:
+        description: >-
+          runs-on label for the planning/core/chunk jobs on x86_64. Defaults to
+          the GitHub-hosted 2-core runner. A label that is not provisioned for
+          the calling repository queues forever, so only override this with a
+          label that is known to resolve for that repo.
+        required: false
+        type: string
+        default: 'ubuntu-24.04'
+      runner_label_aarch64:
+        description: 'runs-on label for the planning/core/chunk jobs when arch is aarch64.'
+        required: false
+        type: string
+        default: 'ubuntu-24.04-arm'
       arch:
         description: 'Target architecture ("x86_64" or "aarch64"). x86_64 caches are unsuffixed for backward compatibility with existing GHCR cache tags; aarch64 gets an -aarch64 suffix so the two never collide.'
         required: false
@@ -61,6 +109,9 @@ env:
   BST2_IMAGE: ${{ inputs.bst2_image }}
   NUM_CHUNKS: ${{ inputs.num_chunks }}
   CORE_SPLIT: ${{ inputs.core_split }}
+  EXTRA_CORE_TARGETS: ${{ inputs.extra_core_targets }}
+  CORE_BUDGET_MINUTES: ${{ inputs.core_budget_minutes }}
+  SOFT_CORE_BUDGET: ${{ inputs.soft_core_budget }}
   # ci-build-matrix.py's get_build_plan() reads BST_ARCH and passes
   # `-o arch $BST_ARCH` to `bst show`. Previously this env var was simply
   # unset, letting bst auto-detect the (x86_64) runner's own arch; now it's
@@ -80,7 +131,7 @@ env:
 jobs:
   # ── Phase 1: Plan ────────────────────────────────────────────────────
   planning:
-    runs-on: ${{ inputs.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    runs-on: ${{ inputs.arch == 'aarch64' && inputs.runner_label_aarch64 || inputs.runner_label }}
     timeout-minutes: 90
     outputs:
       matrix_keys: ${{ steps.matrix.outputs.matrix_keys }}
@@ -145,12 +196,17 @@ jobs:
 
   # ── Phase 2: Core (bootstrap) elements ──────────────────────────────
   build_core:
-    # ⚠️ Was Blacksmith build-amd64 (32-core). Now 2-core GitHub-hosted — the
-    # core build may approach the 6h cap. Candidate for a larger runner
-    # (paid) or a kanpur self-hosted runner if it times out.
+    # ⚠️ Was Blacksmith build-amd64 (32-core). Now 2-core GitHub-hosted by
+    # default — see the runner_label input for moving this onto a larger
+    # fleet, which is the only lever that shortens a single expensive
+    # element (LLVM and WebKit each cost hours here at 2 cores).
+    #
+    # This job doubles as the *shared* cache-warming job: whatever it builds
+    # lands in the core CAS that every chunk restores, so an element built
+    # here is built once instead of once per chunk. See extra_core_targets.
     needs: planning
     if: needs.planning.outputs.core_targets != ''
-    runs-on: ${{ inputs.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    runs-on: ${{ inputs.arch == 'aarch64' && inputs.runner_label_aarch64 || inputs.runner_label }}
     timeout-minutes: 360
     permissions:
       contents: read
@@ -206,7 +262,16 @@ jobs:
           # Bounded well inside the job timeout so the CAS push below always
           # runs — a job-level timeout cancels the job and throws away the
           # entire build.
-          timeout 270m just bst --log-file /src/logs/build-core.log build $TARGETS
+          rc=0
+          timeout "${CORE_BUDGET_MINUTES}m" just bst \
+            --log-file /src/logs/build-core.log build $TARGETS $EXTRA_CORE_TARGETS || rc=$?
+          if [ "$rc" -eq 124 ]; then
+            echo "::warning::core hit the ${CORE_BUDGET_MINUTES}m build budget — the partial CAS is still pushed below and the next run resumes from it"
+            # Only the budget timeout is softened, and only when the caller
+            # opted in: a genuine build error keeps its non-zero exit code.
+            if [ "$SOFT_CORE_BUDGET" = "true" ]; then rc=0; fi
+          fi
+          exit $rc
 
       - name: Archive and Push Core CAS
         if: always()
@@ -230,11 +295,16 @@ jobs:
 
   # ── Phase 3: Dependency chunks (parallel) ───────────────────────────
   build_deps:
-    # ⚠️ Chunks ran on Blacksmith build-amd64 (32-core). On 2-core GH-hosted,
-    # expect much slower chunk builds — candidates for larger runners/kanpur.
+    # ⚠️ Chunks ran on Blacksmith build-amd64 (32-core). On the default 2-core
+    # GitHub-hosted runner a chunk cannot outrun its own critical path: chunks
+    # are round-robin slices of the dependency order, so each one transitively
+    # needs most of the shared closure and rebuilds whatever is not already in
+    # the core CAS. Adding chunks does not help with that — moving the shared
+    # expensive elements into core (extra_core_targets) and/or raising
+    # runner_label does.
     needs: [planning, build_core]
     if: always() && !contains(needs.*.result, 'failure') && needs.planning.outputs.matrix_keys != '[]'
-    runs-on: ${{ inputs.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    runs-on: ${{ inputs.arch == 'aarch64' && inputs.runner_label_aarch64 || inputs.runner_label }}
     timeout-minutes: 360
     permissions:
       contents: read

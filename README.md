@@ -41,6 +41,45 @@ and invokes it from there, so **consumers should not carry their own copy**
 of this script (tromso and xfce-linux both used to; both had it removed
 once this workflow stopped needing it).
 
+### Making chunks stop rebuilding the same expensive elements
+
+Chunks are **round-robin** slices of the dependency order, so chunk *i* holds
+elements scattered across the whole graph — including elements near the very
+end, whose transitive closure is almost everything. A chunk therefore builds
+whatever its dependencies need that is not already in the core CAS it
+restored, and different chunks redo the same work. On tuna-os/xfce-linux this
+was measured at 2.6× (487 distinct elements, 1281 element-builds in one run),
+and on tuna-os/tromso at 3.4×; LLVM alone was built by 4–5 chunks per run at
+~2 hours each.
+
+Two inputs address this, and neither disturbs existing GHCR chunk caches:
+
+| Input | Default | What it does |
+| --- | --- | --- |
+| `extra_core_targets` | `''` | Extra elements built in `build_core` *in addition to* the first `core_split` plan entries. The chunk matrix is still derived from `core_split` alone, so chunk names and cache keys are unchanged. Anything listed here is built once and reaches every chunk through the shared core CAS. |
+| `soft_core_budget` | `false` | Lets `build_core` exhaust its budget without failing the job. Core is a cache-warming job whose partial CAS is pushed either way, so when you deliberately give it more work than fits in one job the timeout is a checkpoint, not a fault. Only exit code 124 is softened. |
+
+Raising `num_chunks` is *not* a substitute: with round-robin slicing it
+multiplies the duplicated closure across more runners rather than dividing
+the work, and because chunk names are derived from each chunk's first element
+(`chunk{i}-{label}`), changing `num_chunks` **or** `core_split` renames every
+chunk and discards every warm chunk cache. `extra_core_targets` was added
+specifically so the shared spine can be moved into core without paying that.
+
+`core_budget_minutes` (default `'270'`) sets the `timeout` around core's
+`bst build`. It has to stay inside the 360-minute job timeout with room for
+the CAS archive+push that follows, which grows with the cache: a chunk push
+of a comparable CAS has been measured at 16 minutes. The chunk budget is
+deliberately left at 270 — a job-level timeout cancels the job and throws
+away the whole chunk, so the remaining headroom there is not worth spending.
+
+`runner_label` / `runner_label_aarch64` (default `ubuntu-24.04` /
+`ubuntu-24.04-arm`) set `runs-on` for planning, core and chunks. This is the
+only lever that shortens a *single* expensive element: nothing about chunking
+can split one `bst` element build across runners. A label that is not
+provisioned for the calling repository queues forever, so only set it to a
+label known to resolve there.
+
 ## Verification without a build
 
 Both scripts and workflows here are checked without needing BuildStream,
