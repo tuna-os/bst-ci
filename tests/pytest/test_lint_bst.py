@@ -107,6 +107,27 @@ def test_local_dependency_names_are_ignored(tmp_path):
     assert deps == set()
 
 
+def test_mapping_dependencies_across_all_dependency_keys_are_extracted():
+    doc = {
+        "depends": [
+            {"filename": "sdk.bst:components/glib.bst", "type": "build"},
+            {"type": "runtime"},
+        ],
+        "build-depends": [
+            {"filename": "sdk.bst:components/meson.bst"},
+        ],
+        "runtime-depends": [
+            {"filename": "sdk.bst:components/gtk4.bst"},
+        ],
+    }
+
+    assert lint_bst.extract_junction_deps(doc) == {
+        "sdk.bst:components/glib.bst",
+        "sdk.bst:components/meson.bst",
+        "sdk.bst:components/gtk4.bst",
+    }
+
+
 def test_main_end_to_end_exit_code(tmp_path, capsys):
     write(tmp_path, "existing.bst", "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/gtk4.bst\n")
     new_file = write(tmp_path, "new.bst", "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/mystery.bst\n")
