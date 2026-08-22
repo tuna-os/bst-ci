@@ -100,10 +100,13 @@ podman, or a real chunked build to run:
 ### `scripts/lint_bst.py`
 
 Catches two classes of mistake in new/changed `.bst` files without
-BuildStream, a junction fetch, or a real build:
+BuildStream, a junction fetch, or a real build. It requires Python 3 and
+PyYAML (`python3 -m pip install pyyaml`):
 
-1. **Structural**: valid YAML, `kind:` is a recognized BuildStream plugin
-   kind (catches typos like `kind: meason`).
+1. **Structural**: invalid YAML and a missing `kind:` are errors. An
+   unrecognized BuildStream plugin kind (including a possible typo such as
+   `kind: meason`) is reported as a non-fatal warning because the script's
+   built-in list may not include every valid third-party plugin.
 2. **Cross-reference**: every junction-qualified dependency (anything with
    a `:` in it, e.g. `freedesktop-sdk.bst:components/foo.bst`) named by a
    new/changed file is checked against every `.bst` file already in the
@@ -128,10 +131,11 @@ python3 scripts/lint_bst.py path/to/elements --check-new path/to/elements/foo/ne
 #   git diff --name-only --diff-filter=AM origin/main... -- '*.bst'
 ```
 
-Exits 0 unless a structural error is found (invalid YAML, missing `kind:`);
-unconfirmed-dependency findings are warnings by default since they're a
-"go check this" signal, not a certain failure — pass `--strict` to make
-them fatal once you've built confidence in the false-positive rate.
+Exits 0 unless a structural error is found (invalid YAML, missing `kind:`).
+Unknown-kind and unconfirmed-dependency findings are warnings by default
+since they're "go check this" signals, not certain failures. Pass `--strict`
+to make unconfirmed-dependency findings fatal once you've built confidence
+in their false-positive rate; unknown-kind warnings remain non-fatal.
 
 ## Scope
 
