@@ -7,6 +7,7 @@ and the get_build_plan function with a mock plan file.
 import hashlib
 import importlib.util
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -171,3 +172,54 @@ class TestGetBuildPlan:
             assert elements[1]["name"] == "also-valid.bst"
         finally:
             os.unlink(plan_file)
+
+    def test_invokes_bst_show_with_arch_override(self, monkeypatch):
+        calls = []
+
+        def fake_run(command, **kwargs):
+            calls.append((command, kwargs))
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                stdout=(
+                    "core/glibc.bst||cached||key1\n"
+                    "target/image.bst||wait||key2\n"
+                ),
+            )
+
+        monkeypatch.setattr(ci_build_matrix.subprocess, "run", fake_run)
+
+        elements = get_build_plan("target/image.bst", arch="aarch64")
+
+        assert elements == [
+            {"name": "target/image.bst", "state": "wait", "key": "key2"}
+        ]
+        assert calls == [
+            (
+                [
+                    "bst",
+                    "-o",
+                    "arch",
+                    "aarch64",
+                    "show",
+                    "--deps",
+                    "all",
+                    "--order",
+                    "stage",
+                    "--format",
+                    "%{name}||%{state}||%{full-key}",
+                    "target/image.bst",
+                ],
+                {"capture_output": True, "text": True, "check": True},
+            )
+        ]
+
+    def test_invokes_bst_show_without_empty_arch_override(self, monkeypatch):
+        def fake_run(command, **kwargs):
+            assert command[:2] == ["bst", "show"]
+            assert kwargs == {"capture_output": True, "text": True, "check": True}
+            return subprocess.CompletedProcess(command, 0, stdout="")
+
+        monkeypatch.setattr(ci_build_matrix.subprocess, "run", fake_run)
+
+        assert get_build_plan("target/image.bst", arch="") == []
