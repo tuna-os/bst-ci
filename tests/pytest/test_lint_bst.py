@@ -147,3 +147,24 @@ def test_main_end_to_end_exit_code(tmp_path, capsys):
         capture_output=True, text=True,
     )
     assert result_strict.returncode == 1
+
+
+def test_empty_file_is_an_error(tmp_path):
+    write(tmp_path, "empty.bst", "")
+    files = lint_bst.find_bst_files(tmp_path)
+    docs = {f: lint_bst.load_yaml(f) for f in files}
+    errors, warnings = [], []
+    for f, doc in docs.items():
+        lint_bst.lint_file(f, doc, errors, warnings)
+    assert any("top level is not a mapping" in e for e in errors)
+
+
+def test_non_dict_top_level_is_an_error(tmp_path):
+    write(tmp_path, "list.bst", "- item1\n- item2\n")
+    files = lint_bst.find_bst_files(tmp_path)
+    docs = {f: lint_bst.load_yaml(f) for f in files}
+    errors, warnings = [], []
+    for f, doc in docs.items():
+        lint_bst.lint_file(f, doc, errors, warnings)
+    assert any("top level is not a mapping" in e for e in errors)
+
