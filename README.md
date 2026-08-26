@@ -156,10 +156,17 @@ the mechanically identical, highest-churn part of the pipeline. It does
 
 ## Versioning
 
-Consumers currently pin `@main` (this repo has no tagged releases yet).
-Once this stabilizes across a few consumers, moving to tagged releases
-(`@v1`) is worth doing so a breaking change here can't silently break
-every consumer's next scheduled build.
+Consumers can pin workflows by git tag or commit SHA (`uses: tuna-os/bst-ci/.github/workflows/multirunner-build.yml@v1.0.0`). When pinning a specific tag or SHA, consumers should also pass `bst_ci_ref` matching the pinned ref so helper scripts checked out during execution (`.bst-ci`) stay aligned with the workflow definition rather than falling back to `main`:
+
+```yaml
+jobs:
+  multirunner:
+    uses: tuna-os/bst-ci/.github/workflows/multirunner-build.yml@v1.0.0
+    with:
+      image_name: your-image
+      bst_target: oci/your-image.bst
+      bst_ci_ref: v1.0.0
+```
 
 ## Consumers
 
