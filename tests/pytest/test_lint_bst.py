@@ -168,3 +168,38 @@ def test_non_dict_top_level_is_an_error(tmp_path):
         lint_bst.lint_file(f, doc, errors, warnings)
     assert any("top level is not a mapping" in e for e in errors)
 
+
+def test_main_no_files_found(tmp_path, monkeypatch, capsys):
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
+    monkeypatch.setattr(sys, "argv", ["lint_bst.py", str(empty_dir)])
+    exit_code = lint_bst.main()
+    assert exit_code == 1
+    stderr = capsys.readouterr().err
+    assert "No .bst files found under the given root(s)" in stderr
+
+
+def test_main_with_yaml_errors(tmp_path, monkeypatch, capsys):
+    write(tmp_path, "bad.bst", "kind: manual\n  bad indent: [\n")
+    monkeypatch.setattr(sys, "argv", ["lint_bst.py", str(tmp_path)])
+    exit_code = lint_bst.main()
+    assert exit_code == 1
+    stdout = capsys.readouterr().out
+    assert "ERROR: " in stdout
+    assert "invalid YAML" in stdout
+
+
+def test_main_check_new_non_dict(tmp_path, monkeypatch, capsys):
+    valid_file = write(tmp_path, "valid.bst", "kind: manual\n")
+    bad_file = write(tmp_path, "bad.bst", "invalid_yaml: [\n")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["lint_bst.py", str(tmp_path), "--check-new", str(bad_file), str(valid_file)],
+    )
+    exit_code = lint_bst.main()
+    assert exit_code == 1
+    stdout = capsys.readouterr().out
+    assert "invalid YAML" in stdout
+
+
