@@ -78,3 +78,15 @@ def test_fewer_leaf_elements_than_chunks_shrinks_matrix(tmp_path):
         core_split=1,
     )
     assert len(data["matrix"]) == 1
+
+
+def test_missing_required_args_exits_with_usage(tmp_path):
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH)],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 1
+    assert "Usage:" in result.stderr
+
