@@ -1,6 +1,6 @@
 # bst-ci Roadmap
 
-**Last updated**: 2026-08-24 | **Maintainer**: tuna-os (hanthor)
+**Last updated**: 2026-08-30 | **Maintainer**: tuna-os (hanthor)
 
 ---
 
@@ -18,9 +18,9 @@ across every consumer.
 - **Role**: shared reusable GitHub Actions for BuildStream desktop images.
 - **Distribution**: consumed as reusable workflows; **no tagged releases** of
   the shared CI itself.
-- **Health**: 3 open issues — reusable workflow bypasses consumer pinning
-  (#9), mutable actionlint container tag (#8), live BuildStream
-  planning/dependency coverage (#10).
+- **Health**: 2 open issues — reusable workflow bypasses consumer pinning
+  (#9) and mutable actionlint container tag (#8). Live BuildStream
+  planning/dependency coverage (#10) landed and the issue is closed.
 
 ### Priorities
 
@@ -28,7 +28,8 @@ across every consumer.
 |----------|------|----------|--------|
 | P0 | Reusable workflow honors consumer pinning — no silent bypass | #9 | 🟡 Open |
 | P1 | Mutable actionlint container tag pinned | #8 | 🟡 Open |
-| P1 | Live BuildStream planning/dependency coverage | #10 | 🟡 Open |
+| P1 | Live BuildStream planning/dependency coverage | #10 | ✅ Complete |
+| P1 | Roll out soft chunk budgets to consumers that need cache convergence | #25 | 🟡 In progress |
 | P2 | ROADMAP-coverage entry in org ROADMAP tally | #1295 | ⬜ Not started |
 
 ---
@@ -46,11 +47,11 @@ across every consumer.
 
 ### Next Quarter (2026 Q4)
 
-**Theme**: coverage and cadence
+**Theme**: cache convergence and release cadence
 
 | Goal | Owner | Tracking | Status |
 |------|-------|----------|--------|
-| Live BuildStream planning coverage | hanthor | #10 | ⬜ Not started |
+| Validate soft chunk-budget rollout with consumers | hanthor | #25 | ⬜ Not started |
 | Tagged releases of the shared workflows | tuna-os | (new) | ⬜ Not started |
 
 ---
