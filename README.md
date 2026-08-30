@@ -58,6 +58,7 @@ Two inputs address this, and neither disturbs existing GHCR chunk caches:
 | --- | --- | --- |
 | `extra_core_targets` | `''` | Extra elements built in `build_core` *in addition to* the first `core_split` plan entries. The chunk matrix is still derived from `core_split` alone, so chunk names and cache keys are unchanged. Anything listed here is built once and reaches every chunk through the shared core CAS. |
 | `soft_core_budget` | `false` | Lets `build_core` exhaust its budget without failing the job. Core is a cache-warming job whose partial CAS is pushed either way, so when you deliberately give it more work than fits in one job the timeout is a checkpoint, not a fault. Only exit code 124 is softened. |
+| `soft_chunk_budget` | `false` | Lets dependency chunks treat exit code 124 as a cache-warming checkpoint instead of failing the run. This allows the caller's `build_final` job to consume the partial CAS and lets later runs resume from the rolling cache. Real build errors still fail. |
 
 Raising `num_chunks` is *not* a substitute: with round-robin slicing it
 multiplies the duplicated closure across more runners rather than dividing
@@ -72,6 +73,14 @@ the CAS archive+push that follows, which grows with the cache: a chunk push
 of a comparable CAS has been measured at 16 minutes. The chunk budget is
 deliberately left at 270 — a job-level timeout cancels the job and throws
 away the whole chunk, so the remaining headroom there is not worth spending.
+
+Enable `soft_chunk_budget` when chunks routinely reach that 270-minute limit
+but still make useful progress. A timed-out chunk publishes only its rolling
+`:latest` cache tag; it does not publish the exact `:<cache_key>` tag, because
+that tag means the chunk completed. This makes repeated runs converge without
+allowing a partial chunk to masquerade as complete. Leave the input disabled
+when a timeout should block final assembly. `soft_core_budget` applies the same
+exit-code-124 policy to the serial core job; the two inputs are independent.
 
 `runner_label` / `runner_label_aarch64` (default `ubuntu-24.04` /
 `ubuntu-24.04-arm`) set `runs-on` for planning, core and chunks. This is the
