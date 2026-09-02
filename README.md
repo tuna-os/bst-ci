@@ -165,17 +165,32 @@ the mechanically identical, highest-churn part of the pipeline. It does
 
 ## Versioning
 
-Consumers can pin workflows by git tag or commit SHA (`uses: tuna-os/bst-ci/.github/workflows/multirunner-build.yml@v1.0.0`). When pinning a specific tag or SHA, consumers should also pass `bst_ci_ref` matching the pinned ref so helper scripts checked out during execution (`.bst-ci`) stay aligned with the workflow definition rather than falling back to `main`:
+Consumers can pin the workflow by commit SHA:
 
 ```yaml
 jobs:
   multirunner:
-    uses: tuna-os/bst-ci/.github/workflows/multirunner-build.yml@v1.0.0
+    uses: tuna-os/bst-ci/.github/workflows/multirunner-build.yml@<sha>
     with:
       image_name: your-image
       bst_target: oci/your-image.bst
-      bst_ci_ref: v1.0.0
 ```
+
+Two caveats, both of which matter when you are pinning in order to be able to
+roll back:
+
+- **This repository publishes no tags or releases yet**, so a SHA is the only
+  ref that resolves. Both current consumers track `main`.
+- **A pin freezes the workflow definition only.** The `planning` job checks the
+  helper scripts out into `.bst-ci` with `ref: main` hardcoded, so a pinned
+  consumer still runs the current `scripts/ci-build-matrix.py` — the script
+  that computes chunk names, the chunk matrix and the GHCR cache keys. There is
+  no input for overriding that ref; passing one that the workflow does not
+  declare fails the run at load time.
+
+`runbooks/rollback.md` covers what to do when a change here breaks a consumer,
+which of the two rollback levers covers which kind of regression, and the cache
+blast radius to expect afterwards.
 
 ## Consumers
 
