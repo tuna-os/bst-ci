@@ -1,59 +1,19 @@
-# bst-ci Roadmap
+# bst-ci ROADMAP
 
-**Last updated**: 2026-08-30 | **Maintainer**: tuna-os (hanthor)
+This document tracks strategic goals, pinning contracts, and maintenance schedules for `bst-ci` shared BuildStream CI infrastructure.
 
----
+## Strategic Overview
 
-## Mission
+`bst-ci` provides reusable BuildStream CI actions and workflows across all Tuna OS desktop image variant repositories.
 
-Own the shared reusable BuildStream workflows that build the desktop-image
-repos (tromso, xfce-linux, and any other BuildStream-based image repo in or
-out of the org) — so image builds are consistent, pinned, and verifiable
-across every consumer.
+## Roadmap Milestones
 
----
+### Q3 2026: Supply-Chain Hardening & Pinning Policies
+- [ ] Enforce strict commit SHA / digest pinning for external GitHub actions and containers.
+- [ ] Eliminate implicit fallback checkouts of `main` branch across reusable workflows.
+- [ ] Add explicit unit and integration test suites for linting and build-matrix helper scripts.
 
-## Current Status
-
-- **Role**: shared reusable GitHub Actions for BuildStream desktop images.
-- **Distribution**: consumed as reusable workflows; **no tagged releases** of
-  the shared CI itself.
-- **Health**: 2 open issues — reusable workflow bypasses consumer pinning
-  (#9) and mutable actionlint container tag (#8). Live BuildStream
-  planning/dependency coverage (#10) landed and the issue is closed.
-
-### Priorities
-
-| Priority | Item | Tracking | Status |
-|----------|------|----------|--------|
-| P0 | Reusable workflow honors consumer pinning — no silent bypass | #9 | 🟡 Open |
-| P1 | Mutable actionlint container tag pinned | #8 | 🟡 Open |
-| P1 | Live BuildStream planning/dependency coverage | #10 | ✅ Complete |
-| P1 | Roll out soft chunk budgets to consumers that need cache convergence | #25 | 🟡 In progress |
-| P2 | ROADMAP-coverage entry in org ROADMAP tally | #1295 | ⬜ Not started |
-
----
-
-## Quarterly Goals
-
-### Current Quarter (2026 Q3)
-
-**Theme**: pin and secure the shared layer
-
-| Goal | Owner | Tracking | Status |
-|------|-------|----------|--------|
-| Consumer-pinning honored | hanthor | #9 | ⬜ Not started |
-| Actionlint tag pinned | hanthor | #8 | ⬜ Not started |
-
-### Next Quarter (2026 Q4)
-
-**Theme**: cache convergence and release cadence
-
-| Goal | Owner | Tracking | Status |
-|------|-------|----------|--------|
-| Validate soft chunk-budget rollout with consumers | hanthor | #25 | ⬜ Not started |
-| Tagged releases of the shared workflows | tuna-os | (new) | ⬜ Not started |
-
----
-
-*ROADMAP added by strategist agent (ACMM L6 — full mode). Signed-off-by: hanthor-hive-agent[bot] <290068839+hanthor-hive-agent[bot]@users.noreply.github.com>*
+### Q4 2026: Multi-Architecture Build Acceleration & Observability
+- [ ] Implement caching and artifact retention policies for BuildStream runners.
+- [ ] Expand architecture coverage matrix for ARM64 and RISC-V image builds.
+- [ ] Provide standardized telemetry for image build durations and failure modes.
