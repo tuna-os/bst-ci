@@ -18,8 +18,16 @@ Output (JSON to stdout):
 
 import hashlib
 import json
+import re
 import subprocess
 import sys
+
+# Chunk names are substituted into `run:` shell bodies and GHCR reference
+# strings by the consuming workflow, so they must not be able to carry shell
+# metacharacters or path separators out of an element filename. Anything
+# outside this set is replaced.
+_CHUNK_LABEL_ALLOWED = re.compile(r"[^A-Za-z0-9._-]")
+_CHUNK_LABEL_MAX = 48
 
 
 def get_build_plan(target: str, arch: str | None = None, plan_file: str | None = None) -> list[dict]:
@@ -70,13 +78,32 @@ def chunk_list(data: list, num_chunks: int) -> list[list]:
     return [data[i::num_chunks] for i in range(num_chunks)]
 
 
+def sanitize_chunk_label(label: str) -> str:
+    """Reduce an element-derived label to a safe chunk-name fragment.
+
+    The result is restricted to `[A-Za-z0-9._-]` and bounded in length. Element
+    filenames come from the consuming repository's tree, and the chunk name
+    built from them is interpolated verbatim into workflow `run:` scripts and
+    GHCR reference strings, where a `$`, backtick, quote, semicolon, newline or
+    `/` would be interpreted rather than carried as data. Ordinary BuildStream
+    element names are already within the allowed set, so this leaves existing
+    chunk names — and therefore existing GHCR cache tags — unchanged.
+    """
+    cleaned = _CHUNK_LABEL_ALLOWED.sub("-", label)[:_CHUNK_LABEL_MAX]
+    # A leading "-" or "." would read as an option or a relative path segment.
+    cleaned = cleaned.lstrip("-.")
+    return cleaned
+
+
 def make_chunk_name(index: int, elements: list[dict]) -> str:
     """Generate a descriptive chunk name from the first element."""
     if not elements:
         return f"chunk{index}"
     first = elements[0]["name"]
     # Extract a short label from the element name
-    label = first.rsplit("/", 1)[-1].replace(".bst", "")
+    label = sanitize_chunk_label(first.rsplit("/", 1)[-1].replace(".bst", ""))
+    if not label:
+        return f"chunk{index}"
     return f"chunk{index}-{label}"
 
 
