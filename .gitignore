@@ -1,0 +1,21 @@
+# Python bytecode — per-interpreter build output, never source. Five of these
+# were tracked (cpython-313, pytest-9.1.1), so a contributor on any other
+# Python or pytest version produced a diff just by running the suite.
+__pycache__/
+*.py[cod]
+*$py.class
+
+# pytest / coverage state. codecov.yml declares a coverage gate, so these
+# appear as soon as anyone runs the suite with --cov locally.
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# ruff.toml is checked in; its cache is not.
+.ruff_cache/
+
+# Local virtualenvs.
+.venv/
+venv/
