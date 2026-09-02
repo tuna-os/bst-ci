@@ -7,6 +7,7 @@ and the get_build_plan function with a mock plan file.
 import hashlib
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,7 @@ spec.loader.exec_module(ci_build_matrix)
 
 chunk_list = ci_build_matrix.chunk_list
 make_chunk_name = ci_build_matrix.make_chunk_name
+sanitize_chunk_label = ci_build_matrix.sanitize_chunk_label
 compute_cache_key = ci_build_matrix.compute_cache_key
 get_build_plan = ci_build_matrix.get_build_plan
 
@@ -72,6 +74,38 @@ class TestMakeChunkName:
         elements = [{"name": "components/nested/devel/base.bst", "state": "cached", "key": ""}]
         name = make_chunk_name(3, elements)
         assert name == "chunk3-base"
+
+    def test_shell_metacharacters_are_stripped(self):
+        # Chunk names reach `run:` shell bodies and GHCR refs verbatim.
+        elements = [{"name": "components/a;id`whoami`.bst", "state": "wait", "key": ""}]
+        name = make_chunk_name(2, elements)
+        assert name == "chunk2-a-id-whoami-"
+        assert not (set(name) & set("$`;&|<>()'\"\\ \n\t/"))
+
+    def test_label_reducible_to_nothing_falls_back_to_index(self):
+        elements = [{"name": "components/;;;.bst", "state": "wait", "key": ""}]
+        assert make_chunk_name(5, elements) == "chunk5"
+
+
+class TestSanitizeChunkLabel:
+    """Tests for sanitize_chunk_label() — chunk names are interpolated into shell."""
+
+    def test_ordinary_names_are_unchanged(self):
+        # Guards the GHCR cache tags of existing chunks against churn.
+        for label in ("popt", "gtk-4", "python3.14", "llvm_18", "webkit2gtk-4.1"):
+            assert sanitize_chunk_label(label) == label
+
+    def test_rejects_shell_and_path_metacharacters(self):
+        for label in ("a;rm -rf /", "a$(id)", "a`id`", "a|b", "a&b", "a\nb", "a/b", "a'b\"c"):
+            cleaned = sanitize_chunk_label(label)
+            assert re.fullmatch(r"[A-Za-z0-9._-]*", cleaned), cleaned
+
+    def test_strips_leading_dash_and_dot(self):
+        assert sanitize_chunk_label("--rm").startswith("rm")
+        assert sanitize_chunk_label("../../etc/passwd").startswith("etc")
+
+    def test_length_is_bounded(self):
+        assert len(sanitize_chunk_label("x" * 500)) <= 48
 
 
 class TestComputeCacheKey:
