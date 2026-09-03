@@ -60,7 +60,11 @@ def test_unknown_kind_is_a_warning(tmp_path):
 
 def test_dependency_used_elsewhere_is_not_flagged(tmp_path):
     write(tmp_path, "existing.bst", "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/gtk4.bst\n")
-    new_file = write(tmp_path, "new.bst", "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/gtk4.bst\n")
+    new_file = write(
+        tmp_path,
+        "new.bst",
+        "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/gtk4.bst\n",
+    )
 
     files = lint_bst.find_bst_files(tmp_path)
     docs = {f: lint_bst.load_yaml(f) for f in files}
@@ -79,7 +83,11 @@ def test_dependency_used_elsewhere_is_not_flagged(tmp_path):
 
 
 def test_dependency_used_only_by_new_file_is_flagged(tmp_path):
-    new_file = write(tmp_path, "new.bst", "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/never-seen.bst\n")
+    new_file = write(
+        tmp_path,
+        "new.bst",
+        "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/never-seen.bst\n",
+    )
 
     files = lint_bst.find_bst_files(tmp_path)
     docs = {f: lint_bst.load_yaml(f) for f in files}
@@ -130,7 +138,11 @@ def test_mapping_dependencies_across_all_dependency_keys_are_extracted():
 
 def test_main_end_to_end_exit_code(tmp_path, capsys):
     write(tmp_path, "existing.bst", "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/gtk4.bst\n")
-    new_file = write(tmp_path, "new.bst", "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/mystery.bst\n")
+    new_file = write(
+        tmp_path,
+        "new.bst",
+        "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/mystery.bst\n",
+    )
 
     # main() parses sys.argv directly, so drive it as a subprocess.
     import subprocess
