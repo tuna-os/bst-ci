@@ -256,3 +256,56 @@ class TestGetBuildPlan:
         monkeypatch.setattr(ci_build_matrix.subprocess, "run", fake_run)
 
         assert get_build_plan("target/image.bst", arch="") == []
+
+
+class TestMainInProcess:
+    """In-process equivalents of test_ci_build_matrix_cli.py's subprocess
+    tests. The CLI suite drives main() as a subprocess to test the real
+    executable, but a subprocess isn't visible to a coverage instrumentation
+    run against this process, so main()'s body reads as uncovered despite
+    being exercised end-to-end. These calls hit the same code paths in-process
+    so coverage reflects the CLI suite's actual reach."""
+
+    def test_full_pipeline_splits_core_and_chunks(self, tmp_path, monkeypatch, capsys):
+        (tmp_path / "build-plan.txt").write_text(
+            "core/glibc.bst||wait||key1\n"
+            "core/systemd.bst||wait||key2\n"
+            "leaf/a.bst||wait||key3\n"
+            "leaf/b.bst||wait||key4\n"
+            "leaf/c.bst||wait||key5\n"
+            "target.bst||wait||key6\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(ci_build_matrix.sys, "argv", ["ci-build-matrix.py", "target.bst", "3", "2"])
+
+        ci_build_matrix.main()
+
+        data = __import__("json").loads(capsys.readouterr().out)
+        assert data["core"] == "core/glibc.bst core/systemd.bst"
+        assert data["final"] == "target.bst"
+        all_chunk_targets = " ".join(data["matrix"].values())
+        assert "target.bst" not in all_chunk_targets
+        assert len(data["matrix"]) == 3
+        assert set(data["cache_keys"].keys()) == set(data["matrix"].keys())
+
+    def test_nothing_to_build_emits_empty_matrix(self, tmp_path, monkeypatch, capsys):
+        (tmp_path / "build-plan.txt").write_text("target.bst||cached||key1\n")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(ci_build_matrix.sys, "argv", ["ci-build-matrix.py", "target.bst", "5", "2"])
+
+        ci_build_matrix.main()
+
+        data = __import__("json").loads(capsys.readouterr().out)
+        assert data == {"core": "", "matrix": {}, "cache_keys": {}, "final": "target.bst"}
+
+    def test_missing_required_args_exits_with_usage(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(ci_build_matrix.sys, "argv", ["ci-build-matrix.py"])
+
+        try:
+            ci_build_matrix.main()
+            raise AssertionError("expected SystemExit")
+        except SystemExit as exc:
+            assert exc.code == 1
+
+        assert "Usage:" in capsys.readouterr().err
