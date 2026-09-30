@@ -59,3 +59,19 @@ jobs:
         run: pip install pytest pyyaml
       - name: Run pytest (offline, no BuildStream/podman required)
         run: pytest tests/pytest/ -v --tb=short
+
+  ruff:
+    name: Python Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      # ruff.toml has configured these rules since the repo was created, but
+      # nothing ran them, so the tree had drifted out of compliance. Enforce
+      # it here rather than leave the config decorative.
+      - name: Install ruff
+        run: pip install ruff
+      - name: Run ruff
+        run: ruff check .

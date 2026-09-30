@@ -60,7 +60,11 @@ def test_unknown_kind_is_a_warning(tmp_path):
 
 def test_dependency_used_elsewhere_is_not_flagged(tmp_path):
     write(tmp_path, "existing.bst", "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/gtk4.bst\n")
-    new_file = write(tmp_path, "new.bst", "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/gtk4.bst\n")
+    new_file = write(
+        tmp_path,
+        "new.bst",
+        "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/gtk4.bst\n",
+    )
 
     files = lint_bst.find_bst_files(tmp_path)
     docs = {f: lint_bst.load_yaml(f) for f in files}
@@ -79,7 +83,11 @@ def test_dependency_used_elsewhere_is_not_flagged(tmp_path):
 
 
 def test_dependency_used_only_by_new_file_is_flagged(tmp_path):
-    new_file = write(tmp_path, "new.bst", "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/never-seen.bst\n")
+    new_file = write(
+        tmp_path,
+        "new.bst",
+        "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/never-seen.bst\n",
+    )
 
     files = lint_bst.find_bst_files(tmp_path)
     docs = {f: lint_bst.load_yaml(f) for f in files}
@@ -130,7 +138,11 @@ def test_mapping_dependencies_across_all_dependency_keys_are_extracted():
 
 def test_main_end_to_end_exit_code(tmp_path, capsys):
     write(tmp_path, "existing.bst", "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/gtk4.bst\n")
-    new_file = write(tmp_path, "new.bst", "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/mystery.bst\n")
+    new_file = write(
+        tmp_path,
+        "new.bst",
+        "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/mystery.bst\n",
+    )
 
     # main() parses sys.argv directly, so drive it as a subprocess.
     import subprocess
@@ -187,6 +199,48 @@ def test_main_with_yaml_errors(tmp_path, monkeypatch, capsys):
     stdout = capsys.readouterr().out
     assert "ERROR: " in stdout
     assert "invalid YAML" in stdout
+
+
+def test_main_prints_warnings_for_unknown_kind(tmp_path, monkeypatch, capsys):
+    write(tmp_path, "weird.bst", "kind: totally-not-a-real-kind\nsources: []\n")
+    monkeypatch.setattr(sys, "argv", ["lint_bst.py", str(tmp_path)])
+    exit_code = lint_bst.main()
+    assert exit_code == 0
+    stdout = capsys.readouterr().out
+    assert "WARNING: " in stdout
+    assert "not in the known-kinds list" in stdout
+
+
+def test_main_reports_unconfirmed_dependency_and_exits_zero(tmp_path, monkeypatch, capsys):
+    write(tmp_path, "existing.bst", "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/gtk4.bst\n")
+    new_file = write(
+        tmp_path,
+        "new.bst",
+        "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/mystery.bst\n",
+    )
+    monkeypatch.setattr(sys, "argv", ["lint_bst.py", str(tmp_path), "--check-new", str(new_file)])
+    exit_code = lint_bst.main()
+    assert exit_code == 0  # unconfirmed warnings don't fail by default
+    stdout = capsys.readouterr().out
+    assert "WARNING: " in stdout
+    assert "mystery.bst" in stdout
+    assert "is not referenced anywhere else" in stdout
+
+
+def test_main_check_new_strict_unconfirmed_exits_one(tmp_path, monkeypatch, capsys):
+    new_file = write(
+        tmp_path,
+        "new.bst",
+        "kind: manual\ndepends:\n- freedesktop-sdk.bst:components/mystery.bst\n",
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["lint_bst.py", str(tmp_path), "--check-new", str(new_file), "--strict"]
+    )
+    exit_code = lint_bst.main()
+    assert exit_code == 1
+    stdout = capsys.readouterr().out
+    assert "ERROR: " in stdout
+    assert "mystery.bst" in stdout
 
 
 def test_main_check_new_non_dict(tmp_path, monkeypatch, capsys):
