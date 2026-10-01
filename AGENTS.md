@@ -56,12 +56,6 @@ python3 -m pytest tests/pytest -v    # 43 tests, offline, no BuildStream needed
 ruff check .                         # config in ruff.toml
 ```
 
-> **Build output is committed.** Five `__pycache__/*.pyc` files are tracked
-> (under `scripts/` and `tests/pytest/`), compiled for `cpython-313` — neither
-> CI's Python 3.14 nor a typical local 3.11 will load them, so they are inert
-> clutter rather than a hazard, but they are build artifacts in version control
-> and belong in `.gitignore`.
-
 > **`ruff` is configured but not enforced.** `ruff.toml` sets the rules, and
 > `test.yml` runs *only* pytest — so nothing checks them, and `ruff check .`
 > currently reports 4 violations in `tests/pytest/` on `main`. Run it by hand
