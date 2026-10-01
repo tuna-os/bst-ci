@@ -1,5 +1,8 @@
 name: Multi-runner BuildStream build (reusable)
 
+permissions:
+  contents: read
+
 # Shared by tuna-os/tromso and tuna-os/xfce-linux (and any future BuildStream
 # desktop-image repo). Splits a BuildStream build into parallel chunks across
 # free GitHub runners, sharing CAS state between jobs via GHCR-hosted
