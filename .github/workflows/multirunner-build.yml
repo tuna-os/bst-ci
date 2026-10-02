@@ -60,6 +60,17 @@ on:
         required: false
         type: string
         default: '270'
+      chunk_budget_minutes:
+        description: >-
+          Wall-clock budget for the `bst build` inside each dependency chunk, in
+          minutes. The job also spends time restoring caches before the build
+          and archiving+pushing the chunk CAS after it, all inside the
+          360-minute job timeout. A large chunk CAS can take an hour to push, so
+          a repo whose chunks get cancelled at 6h during "Push Chunk CAS"
+          should lower this.
+        required: false
+        type: string
+        default: '270'
       soft_core_budget:
         description: >-
           Treat build_core exhausting its budget (exit code 124) as a warning
@@ -75,7 +86,7 @@ on:
         default: false
       soft_chunk_budget:
         description: >-
-          Treat a chunk exhausting its 270-minute build budget (exit code 124)
+          Treat a chunk exhausting its build budget (chunk_budget_minutes) (exit code 124)
           as a warning rather than a job failure — the chunk equivalent of
           soft_core_budget.
 
@@ -141,6 +152,7 @@ env:
   CORE_BUDGET_MINUTES: ${{ inputs.core_budget_minutes }}
   SOFT_CORE_BUDGET: ${{ inputs.soft_core_budget }}
   SOFT_CHUNK_BUDGET: ${{ inputs.soft_chunk_budget }}
+  CHUNK_BUDGET_MINUTES: ${{ inputs.chunk_budget_minutes }}
   # ci-build-matrix.py's get_build_plan() reads BST_ARCH and passes
   # `-o arch $BST_ARCH` to `bst show`. Previously this env var was simply
   # unset, letting bst auto-detect the (x86_64) runner's own arch; now it's
@@ -435,10 +447,10 @@ jobs:
           watcher_pid=$!
 
           rc=0
-          timeout 270m just bst --log-file /src/logs/build-${{ matrix.chunk }}.log build $TARGETS || rc=$?
+          timeout "${CHUNK_BUDGET_MINUTES}m" just bst --log-file /src/logs/build-${{ matrix.chunk }}.log build $TARGETS || rc=$?
           kill "$watcher_pid" 2>/dev/null || true
           if [ "$rc" -eq 124 ]; then
-            echo "::warning::chunk hit the 270m build budget — partial CAS will be salvaged"
+            echo "::warning::chunk hit the ${CHUNK_BUDGET_MINUTES}m build budget — partial CAS will be salvaged"
             # Recorded separately from the step outcome: when the budget is
             # soft the step reports success, and the exact-key cache push below
             # must still be able to tell "built to completion" from "ran out of
