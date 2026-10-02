@@ -1,14 +1,14 @@
 # Contributing to bst-ci
 
-Thank you for contributing to `bst-ci`! This repository provides shared, reusable GitHub Actions workflows and build-matrix orchestration scripts for BuildStream-based desktop image builds across `tuna-os` (such as `tuna-os/tromso` and `tuna-os/xfce-linux`).
+Thank you for your contribution to `bst-ci`! Other repositories can call the shared workflows for GitHub Actions in this repository. The repository also supplies the scripts that make the build matrix for BuildStream desktop images across `tuna-os` (such as `tuna-os/tromso` and `tuna-os/xfce-linux`).
 
 ## Development and Local Verification
 
-All workflows and scripts in this repository can be verified locally without requiring BuildStream, Podman, or a live chunked build runner.
+You can verify all workflows and scripts in this repository on your own machine. You do not need BuildStream, Podman, or a live runner for a chunked build.
 
-### 1. Running Unit Tests
+### 1. Run the Unit Tests
 
-Unit tests cover the build matrix planning logic (`scripts/ci-build-matrix.py`) and static `.bst` element linting (`scripts/lint_bst.py`).
+The unit tests cover the logic that plans the build matrix (`scripts/ci-build-matrix.py`). They also cover the static lint of `.bst` elements (`scripts/lint_bst.py`).
 
 Prerequisites:
 - Python 3.10+
@@ -19,18 +19,18 @@ pip install pytest pyyaml
 pytest tests/pytest/ -v
 ```
 
-### 2. Workflow and YAML Linting
+### 2. Lint the Workflows and the YAML
 
-Workflows in `.github/workflows/` are linted using `actionlint` and `yamllint`. Ensure any modified YAML files pass local linting:
+CI uses `actionlint` and `yamllint` to lint the workflows in `.github/workflows/`. Make sure that each YAML file that you change passes these linters on your machine:
 
 ```bash
 yamllint .github/workflows/
 actionlint
 ```
 
-### 3. Static `.bst` Element Linting
+### 3. Static Lint of `.bst` Elements
 
-`scripts/lint_bst.py` performs structural checks and junction cross-reference verification on `.bst` files without fetching external junction repositories:
+`scripts/lint_bst.py` does structural checks on `.bst` files. It also cross-checks the junction references in them. It does not fetch the external junction repositories:
 
 ```bash
 # Structural check on an element tree
@@ -42,6 +42,6 @@ python3 scripts/lint_bst.py path/to/elements --check-new path/to/elements/new-el
 
 ## Guidelines for Changes
 
-1. **Preserve Interface Contracts**: Before modifying `inputs:` or `outputs:` in `.github/workflows/multirunner-build.yml`, verify compatibility against consumer repositories (`tuna-os/tromso` and `tuna-os/xfce-linux`).
+1. **Keep the interface contracts**: Before you change `inputs:` or `outputs:` in `.github/workflows/multirunner-build.yml`, make sure that the consumer repositories (`tuna-os/tromso` and `tuna-os/xfce-linux`) still work with them.
 2. **DCO Sign-off**: All commits must include a `Signed-off-by:` line (`git commit -s`).
 3. **No Direct Merges**: Open a Pull Request for review.
