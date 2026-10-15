@@ -186,31 +186,50 @@ most frequently. This repo does **not** own these parts:
 
 ## Versioning
 
-Consumers can pin the workflow by commit SHA:
+Consumers can pin the workflow by commit SHA or tag:
 
 ```yaml
 jobs:
   multirunner:
-    uses: tuna-os/bst-ci/.github/workflows/multirunner-build.yml@<sha>
+    uses: tuna-os/bst-ci/.github/workflows/multirunner-build.yml@<sha-or-tag>
     with:
       image_name: your-image
       bst_target: oci/your-image.bst
+      bst_ci_ref: <sha-or-tag>  # optional, defaults to 'main'
 ```
 
-If you pin to make a rollback possible, know these two caveats:
+### Pinning for rollback safety
 
-- **This repository publishes no tags or releases yet**, so a SHA is the only
-  ref that resolves. The two consumers now track `main`.
-- **A pin freezes only the workflow definition.** The `planning` job checks
-  the helper scripts out into `.bst-ci` with `ref: main` hardcoded. Thus a
-  pinned consumer still runs the current `scripts/ci-build-matrix.py`. This
-  script computes the chunk names, the chunk matrix, and the GHCR cache keys.
-  No input can override that ref. If you pass an input that the workflow does
-  not declare, the run fails at load time.
+If you pin to make a rollback possible:
 
-`runbooks/rollback.md` tells you what to do when a change here breaks a
-consumer. It tells you which of the two levers for a rollback to use for each type of
-regression. It also tells you which caches the rollback can affect.
+- **Pass the same ref as both `uses:` and `bst_ci_ref:`** — This ensures
+  that both the workflow definition and the helper scripts (`ci-build-matrix.py`,
+  `lint_bst.py`) come from the same revision. Without `bst_ci_ref`, the
+  `planning` job checks the scripts out from `main` even when the workflow is
+  pinned, so pinning the workflow freezes only the YAML and nothing else.
+
+- **This repository publishes tags and releases** — Use semantic version tags
+  (e.g. `v1.0.0`) to pin to known-good revisions, or use a commit SHA for
+  more precise control.
+
+- **The `bst_ci_ref` input** (default `main`) controls which ref the
+  `planning` job uses when checking out the helper scripts from `.bst-ci`.
+  This script computes the chunk names, the chunk matrix, and the GHCR cache
+  keys. With `bst_ci_ref`, a pinned workflow finally pins the complete
+  build behavior.
+
+### When a change breaks a consumer
+
+`runbooks/rollback.md` tells you what to do. It describes two rollback levers:
+
+- **Lever A**: Revert the bad change on `main` — all consumers recover on their
+  next scheduled run.
+- **Lever B**: Pin the consumer's `uses:` ref to a known-good SHA — contains
+  one consumer while the others keep taking `main`. With `bst_ci_ref` this
+  also pins the scripts and covers all regression types.
+
+The runbook also covers what happens to GHCR chunk caches when chunk naming
+or cache keys change, and how to verify the rollback.
 
 ## Consumers
 
