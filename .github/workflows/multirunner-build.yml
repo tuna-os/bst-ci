@@ -237,7 +237,7 @@ jobs:
 
   # ── Phase 2: Core (bootstrap) elements ──────────────────────────────
   build_core:
-    # ⚠️ Was Blacksmith build-amd64 (32-core). Now 2-core GitHub-hosted by
+    # ⚠️ Was a 32-core build-amd64 runner. Now 2-core GitHub-hosted by
     # default — see the runner_label input for moving this onto a larger
     # fleet, which is the only lever that shortens a single expensive
     # element (LLVM and WebKit each cost hours here at 2 cores).
@@ -336,7 +336,7 @@ jobs:
 
   # ── Phase 3: Dependency chunks (parallel) ───────────────────────────
   build_deps:
-    # ⚠️ Chunks ran on Blacksmith build-amd64 (32-core). On the default 2-core
+    # ⚠️ Chunks ran on 32-core build-amd64 runners. On the default 2-core
     # GitHub-hosted runner a chunk cannot outrun its own critical path: chunks
     # are round-robin slices of the dependency order, so each one transitively
     # needs most of the shared closure and rebuilds whatever is not already in
