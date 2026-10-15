@@ -54,7 +54,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.14'
+          python-version: '3.15'
       - name: Install dependencies
         run: pip install pytest pyyaml
       - name: Run pytest (offline, no BuildStream/podman required)
@@ -67,7 +67,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.14'
+          python-version: '3.15'
       # ruff.toml has configured these rules since the repo was created, but
       # nothing ran them, so the tree had drifted out of compliance. Enforce
       # it here rather than leave the config decorative.
