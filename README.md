@@ -186,7 +186,8 @@ most frequently. This repo does **not** own these parts:
 
 ## Versioning
 
-Consumers can pin the workflow by commit SHA:
+You can pin the workflow to a commit SHA. This repository has no tags or
+releases, so a SHA is the only ref to pin.
 
 ```yaml
 jobs:
@@ -195,22 +196,29 @@ jobs:
     with:
       image_name: your-image
       bst_target: oci/your-image.bst
+      bst_ci_ref: <sha>  # optional; the default is main
 ```
 
-If you pin to make a rollback possible, know these two caveats:
+Two refs control a run:
 
-- **This repository publishes no tags or releases yet**, so a SHA is the only
-  ref that resolves. The two consumers now track `main`.
-- **A pin freezes only the workflow definition.** The `planning` job checks
-  the helper scripts out into `.bst-ci` with `ref: main` hardcoded. Thus a
-  pinned consumer still runs the current `scripts/ci-build-matrix.py`. This
-  script computes the chunk names, the chunk matrix, and the GHCR cache keys.
-  No input can override that ref. If you pass an input that the workflow does
-  not declare, the run fails at load time.
+- The `uses:` ref selects the workflow YAML.
+- The `bst_ci_ref` input selects the `scripts/ci-build-matrix.py` revision.
+  The `planning` job puts this script in `.bst-ci`. The script calculates the
+  chunk names, the chunk matrix and the GHCR cache keys.
 
-`runbooks/rollback.md` tells you what to do when a change here breaks a
-consumer. It tells you which of the two levers for a rollback to use for each type of
-regression. It also tells you which caches the rollback can affect.
+To pin all of the build behavior, use the same SHA for the two refs. If you
+set only `uses:`, the script still comes from `main`.
+
+If a change here breaks a consumer, read `runbooks/rollback.md`. It gives two
+levers for a rollback:
+
+- **Lever A**: Revert the bad change on `main`. All consumers recover on their
+  subsequent run.
+- **Lever B**: Pin one consumer to a good SHA in `uses:` and in
+  `bst_ci_ref`. The other consumers continue on `main`.
+
+The runbook also tells you which GHCR chunk caches a rollback can affect, and
+how to verify the rollback.
 
 ## Consumers
 

@@ -18,18 +18,17 @@ this repository does not own.
 
 ## What a `main` push actually reaches
 
-Two separate things are resolved at run time, and they are **not** pinned
-together:
+Two separate things are resolved at run time:
 
 1. **The workflow definition** — resolved from the ref in the consumer's
    `uses:` line (`...multirunner-build.yml@main` for both current consumers).
 2. **The helper scripts** — checked out by the `planning` job into `.bst-ci`
-   with `ref: main` hardcoded in `multirunner-build.yml`.
+   at the `bst_ci_ref` input, which defaults to `main`.
 
-So a consumer that pins `uses:` to a tag or SHA still runs today's
+So a consumer that pins `uses:` but not `bst_ci_ref` still runs today's
 `scripts/ci-build-matrix.py`, which is what computes the chunk names, the chunk
-matrix and the cache keys. Pinning the workflow freezes the YAML and nothing
-else. Plan rollbacks around that: see Lever B below.
+matrix and the cache keys. Pin both to the same SHA to freeze the YAML and the
+scripts together. See Lever B below.
 
 ## Symptoms that point at a `bst-ci` regression
 
@@ -78,8 +77,8 @@ Use when a forward fix is not ready, when the regression is understood but the
 revert is not trivial, or when only one consumer must be protected while the
 others keep taking `main`.
 
-In the consumer's caller workflow, pin the `uses:` ref to a known-good `bst-ci`
-SHA:
+In the consumer's caller workflow, pin the `uses:` ref and the `bst_ci_ref`
+input to the same known-good `bst-ci` SHA:
 
 ```yaml
 jobs:
@@ -88,16 +87,18 @@ jobs:
     with:
       image_name: tromso
       bst_target: oci/tromso.bst
+      bst_ci_ref: <known-good-sha>
 ```
 
-**This lever only covers regressions in the workflow YAML.** The `.bst-ci`
-checkout inside the pinned workflow still resolves `main`, so a regression in
-`scripts/ci-build-matrix.py` or `scripts/lint_bst.py` follows the consumer
-across the pin. For a script regression, Lever A is the only rollback that
-works today.
+With both pinned, this lever covers regressions in the workflow YAML and in
+`scripts/ci-build-matrix.py`. If you pin only `uses:`, the `.bst-ci` checkout
+still resolves `main` and a script regression follows the consumer across the
+pin.
 
-Do not pass a `bst_ci_ref` input: the workflow does not declare one, and a
-reusable-workflow call that passes an undeclared input fails at load time.
+Only revisions that declare the `bst_ci_ref` input accept it. A
+reusable-workflow call that passes an undeclared input fails at load time, so
+for a SHA older than that input, pin `uses:` alone and use Lever A for script
+regressions.
 
 Record the pin and its reason in the consumer repository, and unpin once the
 fix lands here — a forgotten pin quietly stops that consumer from receiving
@@ -146,8 +147,7 @@ Consequences to plan for after such a rollback:
 - Land script and workflow changes that alter chunk naming or cache keys
   deliberately, and say so in the commit message: the cost is not a build
   failure but hours of rebuild across every consumer.
-- Give the `.bst-ci` checkout a `bst_ci_ref` input (defaulting to `main`) so
-  pinning the workflow also pins the scripts, and Lever B covers script
-  regressions instead of only YAML ones.
+- Pin `bst_ci_ref` together with `uses:` so that Lever B covers script
+  regressions as well as YAML ones.
 - Consumers that must not break unattended should pin deliberately and update
   the pin on purpose, rather than tracking `main`.
