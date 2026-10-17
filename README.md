@@ -187,7 +187,7 @@ most frequently. This repo does **not** own these parts:
 ## Versioning
 
 You can pin the workflow to a commit SHA. This repository has no tags or
-releases, so a SHA is the only ref to pin.
+releases, so a SHA is the only stable ref to pin.
 
 ```yaml
 jobs:
@@ -196,26 +196,25 @@ jobs:
     with:
       image_name: your-image
       bst_target: oci/your-image.bst
-      bst_ci_ref: <sha>  # optional; the default is main
 ```
 
-Two refs control a run:
+The `uses:` ref selects one versioned unit: both the reusable workflow and
+`scripts/ci-build-matrix.py`. The planning job checks the helper out at
+`${{ github.workflow_sha }}`, the exact commit from which GitHub loaded the
+reusable workflow. A helper change therefore cannot bypass a consumer's pin.
 
-- The `uses:` ref selects the workflow YAML.
-- The `bst_ci_ref` input selects the `scripts/ci-build-matrix.py` revision.
-  The `planning` job puts this script in `.bst-ci`. The script calculates the
-  chunk names, the chunk matrix and the GHCR cache keys.
-
-To pin all of the build behavior, use the same SHA for the two refs. If you
-set only `uses:`, the script still comes from `main`.
+Existing callers that pass `bst_ci_ref` can keep doing so when it identifies
+the same ref or commit as `uses:`. The input is a compatibility assertion only:
+it cannot select a different helper revision, and a mismatch fails before the
+helper is checked out. New callers should omit it.
 
 If a change here breaks a consumer, read `runbooks/rollback.md`. It gives two
 levers for a rollback:
 
 - **Lever A**: Revert the bad change on `main`. All consumers recover on their
   subsequent run.
-- **Lever B**: Pin one consumer to a good SHA in `uses:` and in
-  `bst_ci_ref`. The other consumers continue on `main`.
+- **Lever B**: Pin one consumer's `uses:` line to a good SHA. The workflow and
+  helper move together; other consumers continue on `main`.
 
 The runbook also tells you which GHCR chunk caches a rollback can affect, and
 how to verify the rollback.
