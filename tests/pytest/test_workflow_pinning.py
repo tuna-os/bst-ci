@@ -2,7 +2,6 @@ from pathlib import Path
 
 import yaml
 
-
 WORKFLOW = Path(__file__).parents[2] / ".github/workflows/multirunner-build.yml"
 
 

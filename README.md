@@ -199,14 +199,14 @@ jobs:
 ```
 
 The `uses:` ref selects one versioned unit: both the reusable workflow and
-`scripts/ci-build-matrix.py`. The planning job checks the helper out at
+`scripts/ci-build-matrix.py`. The plan job checks the helper out at
 `${{ github.workflow_sha }}`, the exact commit from which GitHub loaded the
 reusable workflow. A helper change therefore cannot bypass a consumer's pin.
 
-Existing callers that pass `bst_ci_ref` can keep doing so when it identifies
-the same ref or commit as `uses:`. The input is a compatibility assertion only:
-it cannot select a different helper revision, and a mismatch fails before the
-helper is checked out. New callers should omit it.
+Existing callers that pass `bst_ci_ref` can keep using it when it identifies
+the same ref or commit as `uses:`. The input only asserts compatibility:
+it cannot select a different helper revision. A mismatch stops the workflow
+before it checks out the helper. New callers should omit it.
 
 If a change here breaks a consumer, read `runbooks/rollback.md`. It gives two
 levers for a rollback:
