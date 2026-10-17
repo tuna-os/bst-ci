@@ -16,6 +16,25 @@ Consumers (see README.md):
 Both publish signed OCI images to GHCR from their own `build_final` job, which
 this repository does not own.
 
+## Operational signals
+
+The reusable workflow has no independent notification channel. The current
+consumers detect user impact through a daily freshness check:
+
+| Repository | Check | Alert condition | Resolution |
+| --- | --- | --- | --- |
+| `tuna-os/tromso` | `.github/workflows/staleness-check.yml`, 09:00 UTC | No successful `Build Tromso (Multi-Runner)` run on `main` for 48 hours | Opens or updates a GitHub issue; closes it after a successful run |
+| `tuna-os/xfce-linux` | `.github/workflows/staleness-check.yml`, 09:00 UTC | No successful `Build xfce-linux (Multi-Runner)` run on `main` for 48 hours | Opens or updates a GitHub issue; closes it after a successful run |
+
+These checks measure a published-build outcome, not merely a green planning or
+cache-warming job. If another repository adopts this workflow, it needs an
+equivalent freshness check before its unattended builds are operationally
+covered. During an incident, use the alert issue and the last successful caller
+run to establish the affected window before choosing a rollback lever.
+
+For the incident record, use [incident-template.md](incident-template.md).
+
+
 ## What a `main` push actually reaches
 
 Two separate things are resolved at run time:
@@ -151,3 +170,4 @@ Consequences to plan for after such a rollback:
   regressions as well as YAML ones.
 - Consumers that must not break unattended should pin deliberately and update
   the pin on purpose, rather than tracking `main`.
+- Record the incident using [incident-template.md](incident-template.md), including the affected consumer, `bst-ci` refs, cache impact, and the first verified successful publish.

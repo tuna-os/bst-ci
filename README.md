@@ -233,6 +233,9 @@ levers for a rollback:
 The runbook also tells you which GHCR chunk caches a rollback can affect, and
 how to verify the rollback.
 
+For the incident record and follow-up actions, use
+[`runbooks/incident-template.md`](runbooks/incident-template.md).
+
 ## Consumers
 
 - [tuna-os/tromso](https://github.com/tuna-os/tromso)
