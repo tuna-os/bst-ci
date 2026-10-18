@@ -233,6 +233,13 @@ levers for a rollback:
 The runbook also tells you which GHCR chunk caches a rollback can affect, and
 how to verify the rollback.
 
+## Incident records
+
+Use [`runbooks/incident-template.md`](runbooks/incident-template.md) to record
+a shared-workflow incident. It captures the resolved workflow and helper-script
+SHAs, affected consumers, containment choice, and recovery proof. Keep the
+rollback procedure in [`runbooks/rollback.md`](runbooks/rollback.md).
+
 ## Consumers
 
 - [tuna-os/tromso](https://github.com/tuna-os/tromso)
