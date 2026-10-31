@@ -1,0 +1,98 @@
+name: Lint .bst files (reusable)
+
+# Shared lint entrypoint for BuildStream desktop-image repos. It runs
+# scripts/lint_bst.py from the same bst-ci commit as this workflow, so a
+# consumer pins the linter and its CI glue with one `uses:` ref.
+#
+# Pull requests and merge groups: lint the full tree structurally and report
+# unconfirmed junction dependencies for added/modified .bst files under
+# `elements_roots`. Other events (push, workflow_dispatch, schedule): lint the
+# full tree structurally only.
+#
+# See https://github.com/tuna-os/bst-ci#scriptslint_bstpy for usage notes.
+
+on:
+  workflow_call:
+    inputs:
+      elements_roots:
+        description: >-
+          Whitespace-separated element root directories, relative to the
+          caller repository root.
+        required: false
+        type: string
+        default: 'elements'
+      strict:
+        description: 'Treat unconfirmed junction dependencies as errors'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  lint-bst:
+    name: lint .bst files
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The linter comes from the commit that GitHub loaded this reusable
+      # workflow from, not from main, so the `uses:` pin covers both.
+      - name: Checkout bst-ci scripts
+        uses: actions/checkout@v7
+        with:
+          repository: tuna-os/bst-ci
+          ref: ${{ job.workflow_sha }}
+          path: .bst-ci
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.15'
+
+      - name: Install linter dependencies
+        run: python3 -m pip install pyyaml
+
+      - name: Lint .bst files
+        env:
+          ELEMENTS_ROOTS: ${{ inputs.elements_roots }}
+          STRICT: ${{ inputs.strict }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          LINT_BST: .bst-ci/scripts/lint_bst.py
+        run: |
+          set -euo pipefail
+          read -r -a roots <<< "$ELEMENTS_ROOTS"
+          if [ "${#roots[@]}" -eq 0 ]; then
+            echo "::error title=No element roots::elements_roots is empty"
+            exit 1
+          fi
+          # git diff prints repo-relative paths; match lint_bst.py's view.
+          roots=("${roots[@]#./}")
+          roots=("${roots[@]%/}")
+
+          args=("${roots[@]}")
+          if [ "$STRICT" = "true" ]; then
+            args+=(--strict)
+          fi
+
+          if [ -n "${BASE_SHA:-}" ]; then
+            mapfile -t files < <(
+              git diff --name-only --diff-filter=AM "$BASE_SHA"...HEAD -- "${roots[@]}" \
+                | grep '\.bst$' || true
+            )
+            if [ "${#files[@]}" -gt 0 ]; then
+              echo "Changed .bst files:"
+              printf '  %s\n' "${files[@]}"
+              args+=(--check-new "${files[@]}")
+            else
+              echo "No .bst files changed; running structural checks only."
+            fi
+          else
+            echo "No pull request base; running structural checks only."
+          fi
+
+          python3 "$LINT_BST" "${args[@]}"
