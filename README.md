@@ -180,6 +180,27 @@ are not always failures. When you trust their false-positive rate, add
 `--strict` to make unconfirmed dependencies fatal. Unknown kinds stay
 warnings.
 
+### Reusable lint workflow
+
+Consumers do not copy the lint commands into their CI. They call
+`.github/workflows/lint-bst.yml`:
+
+```yaml
+jobs:
+  lint-bst:
+    uses: tuna-os/bst-ci/.github/workflows/lint-bst.yml@main
+    with:
+      elements_roots: elements  # optional; separate more roots with spaces
+      strict: false             # optional
+```
+
+The workflow checks out `scripts/lint_bst.py` at `${{ job.workflow_sha }}`.
+Thus the `uses:` ref pins the workflow and the linter together. For a pull
+request or a merge group, the workflow lints the full tree. It also checks
+the added or modified `.bst` files under `elements_roots` for unconfirmed
+dependencies. For other events, it does only the structural checks on the
+full tree.
+
 ## Scope
 
 This repo owns the **plan, core, and parallel dependency chunks**. These are
