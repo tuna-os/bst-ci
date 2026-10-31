@@ -130,13 +130,12 @@ on:
         default: 'x86_64'
       bst_ci_ref:
         description: >-
-          Ref of tuna-os/bst-ci that the planning job checks out into .bst-ci
-          for scripts/ci-build-matrix.py. Pass the same ref as the `uses:` line
-          so a pinned workflow also pins the script that computes chunk names
-          and cache keys.
+          Compatibility assertion for existing callers. If set, it must name
+          the same ref or commit as the `uses:` line; it cannot override the
+          consumer-selected workflow revision.
         required: false
         type: string
-        default: 'main'
+        default: ''
     outputs:
       matrix_keys:
         description: 'JSON array of chunk names, for the caller to re-download/merge CAS in build_final'
@@ -195,11 +194,34 @@ jobs:
       # This job's own scripts/ci-build-matrix.py, checked out alongside
       # (not merged into) the caller's tree — the caller shouldn't need to
       # carry a copy of this script just to use this reusable workflow.
+      - name: Validate bst-ci workflow revision
+        env:
+          WORKFLOW_SHA: ${{ job.workflow_sha }}
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+          BST_CI_REF: ${{ inputs.bst_ci_ref }}
+        run: |
+          if [[ ! "$WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error title=Invalid workflow revision::job.workflow_sha is missing or is not a full commit SHA"
+            exit 1
+          fi
+
+          if [[ -n "$BST_CI_REF" ]]; then
+            resolved_ref="${WORKFLOW_REF##*@}"
+            normalized_ref="${resolved_ref#refs/heads/}"
+            normalized_ref="${normalized_ref#refs/tags/}"
+            if [[ "$BST_CI_REF" != "$WORKFLOW_SHA" \
+               && "$BST_CI_REF" != "$resolved_ref" \
+               && "$BST_CI_REF" != "$normalized_ref" ]]; then
+              echo "::error title=Conflicting bst_ci_ref::bst_ci_ref must identify the revision selected by the reusable workflow uses line"
+              exit 1
+            fi
+          fi
+
       - name: Checkout bst-ci scripts
         uses: actions/checkout@v7
         with:
           repository: tuna-os/bst-ci
-          ref: ${{ inputs.bst_ci_ref }}
+          ref: ${{ job.workflow_sha }}
           path: .bst-ci
 
       - run: podman pull "$BST2_IMAGE"
