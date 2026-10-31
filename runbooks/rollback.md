@@ -20,7 +20,7 @@ this repository does not own.
 
 The ref in the consumer's `uses:` line selects the workflow definition. During
 planning, that workflow checks `scripts/ci-build-matrix.py` out at
-`${{ github.workflow_sha }}`, the exact commit from which GitHub loaded the
+`${{ job.workflow_sha }}`, the exact commit from which GitHub loaded the
 reusable workflow. The YAML and helper therefore move as one versioned unit.
 
 `bst_ci_ref` remains only for compatibility with callers that already pass it.

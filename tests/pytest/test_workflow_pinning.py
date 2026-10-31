@@ -18,7 +18,7 @@ def test_helper_checkout_uses_resolved_workflow_sha():
     checkout = named_step("Checkout bst-ci scripts")
 
     assert checkout["with"]["repository"] == "tuna-os/bst-ci"
-    assert checkout["with"]["ref"] == "${{ github.workflow_sha }}"
+    assert checkout["with"]["ref"] == "${{ job.workflow_sha }}"
 
 
 def test_workflow_revision_is_validated_before_helper_checkout():
@@ -27,6 +27,15 @@ def test_workflow_revision_is_validated_before_helper_checkout():
     checkout = named_step("Checkout bst-ci scripts")
 
     assert steps.index(validation) < steps.index(checkout)
-    assert validation["env"]["WORKFLOW_SHA"] == "${{ github.workflow_sha }}"
-    assert "github.workflow_sha is missing or is not a full commit SHA" in validation["run"]
+    assert validation["env"]["WORKFLOW_SHA"] == "${{ job.workflow_sha }}"
+    assert validation["env"]["WORKFLOW_REF"] == "${{ job.workflow_ref }}"
+    assert "job.workflow_sha is missing or is not a full commit SHA" in validation["run"]
     assert "Conflicting bst_ci_ref" in validation["run"]
+
+
+def test_planning_does_not_use_caller_scoped_workflow_identity():
+    # In a reusable workflow, github.workflow_sha/github.workflow_ref describe
+    # the caller's workflow; only job.workflow_* identify this bst-ci file.
+    for step in planning_steps():
+        assert "github.workflow_sha" not in str(step)
+        assert "github.workflow_ref" not in str(step)

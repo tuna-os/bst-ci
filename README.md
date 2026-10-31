@@ -200,7 +200,7 @@ jobs:
 
 The `uses:` ref selects one versioned unit: both the reusable workflow and
 `scripts/ci-build-matrix.py`. The plan job checks the helper out at
-`${{ github.workflow_sha }}`, the exact commit from which GitHub loaded the
+`${{ job.workflow_sha }}`, the exact commit from which GitHub loaded the
 reusable workflow. A helper change therefore cannot bypass a consumer's pin.
 
 Existing callers that pass `bst_ci_ref` can keep using it when it identifies
