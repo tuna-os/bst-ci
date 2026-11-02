@@ -232,22 +232,22 @@ jobs:
       - name: Cache BuildStream sources
         uses: actions/cache@v6
         with:
-          path: .cache/buildstream/sources
-          key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ hashFiles('elements/**/*.bst') }}
+          path: ~/.cache/buildstream/sources
+          key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}
           restore-keys: |
-            bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-
+            bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Generate Build Matrix
         id: matrix
         env:
           BST_FLAGS: --no-interactive
         run: |
-          mkdir -p .cache/buildstream logs
+          mkdir -p "$HOME/.cache/buildstream" logs
 
           podman run --rm --privileged --device /dev/fuse \
             --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
             -v "${{ github.workspace }}:/src:rw" \
-            -v "${{ github.workspace }}/.cache/buildstream:/root/.cache/buildstream:rw" \
+            -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
             -w /src \
             "$BST2_IMAGE" \
             python3 /src/.bst-ci/scripts/ci-build-matrix.py "$BST_TARGET" \
@@ -302,10 +302,10 @@ jobs:
       - name: Cache BuildStream sources
         uses: actions/cache@v6
         with:
-          path: .cache/buildstream/sources
-          key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ hashFiles('elements/**/*.bst') }}
+          path: ~/.cache/buildstream/sources
+          key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}
           restore-keys: |
-            bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-
+            bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Login to GHCR
         run: echo "$GITHUB_TOKEN" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
@@ -354,7 +354,7 @@ jobs:
             -v "$HOME/.cache/buildstream:/input:ro" \
             -v "${{ github.workspace }}:/output:rw" \
             "$BST2_IMAGE" \
-            sh -c "tar -cf - -C /input --exclude 'cas/staging' --exclude 'cas/tmp' . | zstd -T0 > /output/cas-core.tar.zst"
+            bash -o pipefail -c "tar -cf - -C /input --exclude './sources' --exclude './cas/staging' --exclude './cas/tmp' . | zstd -T0 > /output/cas-core.tar.zst"
           oras push "$CORE_REF" cas-core.tar.zst:application/vnd.buildstream.cas.tar.zst
 
       - uses: actions/upload-artifact@v7
@@ -407,10 +407,10 @@ jobs:
       - name: Cache BuildStream sources
         uses: actions/cache@v6
         with:
-          path: .cache/buildstream/sources
-          key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ hashFiles('elements/**/*.bst') }}
+          path: ~/.cache/buildstream/sources
+          key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}
           restore-keys: |
-            bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-
+            bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Login to GHCR
         run: echo "$GITHUB_TOKEN" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
@@ -502,7 +502,7 @@ jobs:
             -v "$HOME/.cache/buildstream:/input:ro" \
             -v "${{ github.workspace }}:/output:rw" \
             "$BST2_IMAGE" \
-            sh -c "tar -cf - -C /input --exclude 'cas/staging' --exclude 'cas/tmp' . | zstd -T0 > /output/cas-${{ matrix.chunk }}.tar.zst"
+            bash -o pipefail -c "tar -cf - -C /input --exclude './sources' --exclude './cas/staging' --exclude './cas/tmp' . | zstd -T0 > /output/cas-${{ matrix.chunk }}.tar.zst"
           # These tags are a cache, not a deliverable: a failed push costs the
           # next run some rebuild time, never correctness. Retry transient
           # registry errors and warn rather than fail — run 33167876228 lost
