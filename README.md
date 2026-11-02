@@ -163,6 +163,8 @@ chunked build:
   To run them on your machine, use `pytest tests/pytest/ -v`.
 - `actionlint` and `yamllint` check every workflow file. This includes the
   `.github/workflows/test.yml` file of this repo, so this repo lints itself.
+  The runner-label configuration includes GitHub's Ubuntu 26.04 image because
+  the pinned actionlint list does not yet include it.
 - GitHub does not validate the contract between repos for you. Thus, before
   you change the `inputs:`/`outputs:` contract of `workflow_call`, do these
   steps:
