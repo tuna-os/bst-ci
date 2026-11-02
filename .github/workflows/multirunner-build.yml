@@ -348,11 +348,22 @@ jobs:
       - name: Archive and Push Core CAS
         if: always()
         run: |
-          set -o pipefail
-          # timeout can end the just client while its container keeps writing.
-          # Stop only this runner's pinned builder containers before snapshotting.
-          podman ps --quiet --filter "ancestor=$BST2_IMAGE" |
-            xargs --no-run-if-empty podman stop --time 30
+          set -euo pipefail
+          # The client can exit before its container. Do not stop peer workspaces.
+          builders=$(podman ps --quiet --filter "ancestor=$BST2_IMAGE")
+          workspace=$(realpath "$GITHUB_WORKSPACE")
+          for builder in $builders; do
+            if mount_source=$(podman inspect --format '{{range .Mounts}}{{if eq .Destination "/src"}}{{.Source}}{{end}}{{end}}' "$builder"); then
+              if [[ "$mount_source" == "$workspace" ]]; then
+                podman stop --ignore --time 30 "$builder"
+              fi
+            else
+              status=0
+              podman container exists "$builder" || status=$?
+              # An auto-removed container has already stopped; other errors fail.
+              [[ "$status" == 1 ]] || exit 1
+            fi
+          done
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           CORE_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-core:latest"
           podman run --rm \
@@ -503,10 +514,21 @@ jobs:
       - name: Push Chunk CAS to GHCR
         if: always() && steps.cache_check.outputs.cache_hit != 'true' && steps.build.outputs.skipped != 'true' && env.CHUNK_CACHE_KEY != '' && env.CHUNK_CACHE_KEY != 'null'
         run: |
-          set -o pipefail
-          # A timed-out client does not guarantee that the container has exited.
-          podman ps --quiet --filter "ancestor=$BST2_IMAGE" |
-            xargs --no-run-if-empty podman stop --time 30
+          set -euo pipefail
+          # Scope shutdown to this job's workspace, including on shared runners.
+          builders=$(podman ps --quiet --filter "ancestor=$BST2_IMAGE")
+          workspace=$(realpath "$GITHUB_WORKSPACE")
+          for builder in $builders; do
+            if mount_source=$(podman inspect --format '{{range .Mounts}}{{if eq .Destination "/src"}}{{.Source}}{{end}}{{end}}' "$builder"); then
+              if [[ "$mount_source" == "$workspace" ]]; then
+                podman stop --ignore --time 30 "$builder"
+              fi
+            else
+              status=0
+              podman container exists "$builder" || status=$?
+              [[ "$status" == 1 ]] || exit 1
+            fi
+          done
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           LATEST_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-${{ matrix.chunk }}:latest"
           CHUNK_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-${{ matrix.chunk }}:${CHUNK_CACHE_KEY}"

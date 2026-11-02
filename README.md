@@ -126,7 +126,9 @@ a truncated archive as an exact-key hit.
 These changes reduce disk pressure but do not guarantee that a large CAS fits
 a hosted runner. An archive failure still fails the job.
 
-Before each snapshot, the job stops containers that use its pinned builder image.
+Before each snapshot, the job stops its builder containers.
+It matches both the pinned image and the workspace bind mount.
+Thus another job on a shared runner can continue without interruption.
 A timeout can stop the `just` client but leave its container active.
 The stop prevents changes to CAS objects during the archive.
 Archives also omit daemon logs and sockets; separate artifacts retain build logs.
