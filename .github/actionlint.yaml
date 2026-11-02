@@ -6,6 +6,13 @@
 # job.workflow_ref contexts that GitHub documents for reusable workflows:
 # https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#job-context
 # Remove that ignore once actionlint types them.
+# The pinned actionlint runner list predates this supported hosted image.
+# https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2604-Readme.md
+# actionlint's additional-label setting covers labels absent from its built-in list.
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04
+
 paths:
   .github/workflows/*.yml:
     ignore:

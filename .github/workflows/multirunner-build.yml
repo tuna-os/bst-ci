@@ -232,22 +232,23 @@ jobs:
       - name: Cache BuildStream sources
         uses: actions/cache@v6
         with:
-          path: .cache/buildstream/sources
-          key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ hashFiles('elements/**/*.bst') }}
+          path: ~/.cache/buildstream/sources
+          key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}-planning
           restore-keys: |
-            bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-
+            bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}-
+            bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Generate Build Matrix
         id: matrix
         env:
           BST_FLAGS: --no-interactive
         run: |
-          mkdir -p .cache/buildstream logs
+          mkdir -p "$HOME/.cache/buildstream" logs
 
           podman run --rm --privileged --device /dev/fuse \
             --security-opt apparmor=unconfined --cap-add SYS_ADMIN \
             -v "${{ github.workspace }}:/src:rw" \
-            -v "${{ github.workspace }}/.cache/buildstream:/root/.cache/buildstream:rw" \
+            -v "$HOME/.cache/buildstream:/root/.cache/buildstream:rw" \
             -w /src \
             "$BST2_IMAGE" \
             python3 /src/.bst-ci/scripts/ci-build-matrix.py "$BST_TARGET" \
@@ -299,13 +300,15 @@ jobs:
       - name: Setup ORAS
         uses: oras-project/setup-oras@v2
 
-      - name: Cache BuildStream sources
-        uses: actions/cache@v6
+      - name: Restore BuildStream sources
+        id: sources
+        uses: actions/cache/restore@v6
         with:
-          path: .cache/buildstream/sources
-          key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ hashFiles('elements/**/*.bst') }}
+          path: ~/.cache/buildstream/sources
+          key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}-core-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-
+            bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}-
+            bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Login to GHCR
         run: echo "$GITHUB_TOKEN" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
@@ -314,21 +317,24 @@ jobs:
 
       - name: Restore Core Cache from GHCR
         run: |
+          set -euo pipefail
           mkdir -p ~/.cache/buildstream
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           CORE_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-core:latest"
-          if oras pull "$CORE_REF" -o .; then
-            if [ -f cas-core.tar.zst ]; then
-              zstd -d -c -T0 cas-core.tar.zst | tar -xf - -C "$HOME/.cache/buildstream"
-              rm -f cas-core.tar.zst
-            fi
+          if manifest=$(oras manifest fetch "$CORE_REF"); then
+            digest=$(jq -er '.layers[] | select(.mediaType == "application/vnd.buildstream.cas.tar.zst") | .digest' <<< "$manifest")
+            oras blob fetch --output - "${CORE_REF%:*}@${digest}" |
+              zstd -d -c -T0 |
+              tar -xf - -C "$HOME/.cache/buildstream" \
+                --exclude='./sources' --exclude='./logs' \
+                --exclude='./cas/staging' --exclude='./cas/tmp' --exclude='*.sock'
           else
             echo "No existing ${IMAGE_NAME} core cache, starting fresh."
           fi
 
       - name: Build Core
         env:
-          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: --no-interactive --on-error quit --config /src/buildstream-ci.conf
         run: |
           mkdir -p logs
           # Bounded well inside the job timeout so the CAS push below always
@@ -348,20 +354,46 @@ jobs:
       - name: Archive and Push Core CAS
         if: always()
         run: |
+          set -euo pipefail
+          # The client can exit before its container. Do not stop peer workspaces.
+          builders=$(podman ps --quiet --filter "ancestor=$BST2_IMAGE")
+          workspace=$(realpath "$GITHUB_WORKSPACE")
+          for builder in $builders; do
+            if mount_source=$(podman inspect --format '{{range .Mounts}}{{if eq .Destination "/src"}}{{.Source}}{{end}}{{end}}' "$builder"); then
+              if [[ "$mount_source" == "$workspace" ]]; then
+                podman stop --ignore --time 30 "$builder"
+              fi
+            else
+              status=0
+              podman container exists "$builder" || status=$?
+              # An auto-removed container has already stopped; other errors fail.
+              [[ "$status" == 1 ]] || exit 1
+            fi
+          done
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           CORE_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-core:latest"
           podman run --rm \
             -v "$HOME/.cache/buildstream:/input:ro" \
             -v "${{ github.workspace }}:/output:rw" \
             "$BST2_IMAGE" \
-            sh -c "tar -cf - -C /input --exclude 'cas/staging' --exclude 'cas/tmp' . | zstd -T0 > /output/cas-core.tar.zst"
+            bash -o pipefail -c "tar -cf - -C /input --exclude './sources' --exclude './logs' --exclude '*.sock' --exclude './cas/staging' --exclude './cas/tmp' . | zstd -T0 > /output/cas-core.tar.zst"
           oras push "$CORE_REF" cas-core.tar.zst:application/vnd.buildstream.cas.tar.zst
+
+      - name: Save BuildStream sources after checkpoint
+        if: always() && steps.sources.outputs.cache-primary-key != '' && steps.sources.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/buildstream/sources
+          key: ${{ steps.sources.outputs.cache-primary-key }}
 
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: build-logs-${{ env.IMAGE_NAME }}${{ env.ARCH_SUFFIX }}-core
-          path: logs/
+          path: |
+            logs/
+            ~/.cache/buildstream/logs/
+          include-hidden-files: true
           retention-days: 7
           if-no-files-found: ignore
 
@@ -404,13 +436,15 @@ jobs:
       - name: Setup ORAS
         uses: oras-project/setup-oras@v2
 
-      - name: Cache BuildStream sources
-        uses: actions/cache@v6
+      - name: Restore BuildStream sources
+        id: sources
+        uses: actions/cache/restore@v6
         with:
-          path: .cache/buildstream/sources
-          key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ hashFiles('elements/**/*.bst') }}
+          path: ~/.cache/buildstream/sources
+          key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}-${{ matrix.chunk }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-
+            bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}-
+            bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Login to GHCR
         run: echo "$GITHUB_TOKEN" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
@@ -432,34 +466,44 @@ jobs:
       - name: Restore Core Cache
         if: steps.cache_check.outputs.cache_hit != 'true'
         run: |
+          set -euo pipefail
           mkdir -p ~/.cache/buildstream
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          if oras pull "ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-core:latest" -o .; then
-            if [ -f cas-core.tar.zst ]; then
-              zstd -d -c -T0 cas-core.tar.zst | tar -xf - -C "$HOME/.cache/buildstream"
-              rm -f cas-core.tar.zst
-            fi
+          CORE_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-core:latest"
+          if manifest=$(oras manifest fetch "$CORE_REF"); then
+            digest=$(jq -er '.layers[] | select(.mediaType == "application/vnd.buildstream.cas.tar.zst") | .digest' <<< "$manifest")
+            oras blob fetch --output - "${CORE_REF%:*}@${digest}" |
+              zstd -d -c -T0 |
+              tar -xf - -C "$HOME/.cache/buildstream" \
+                --exclude='./sources' --exclude='./logs' \
+                --exclude='./cas/staging' --exclude='./cas/tmp' --exclude='*.sock'
+          else
+            echo "No existing ${IMAGE_NAME} core cache, starting fresh."
           fi
 
       - name: Restore Chunk Cache (fallback to latest)
         if: steps.cache_check.outputs.cache_hit != 'true'
-        continue-on-error: true
         run: |
+          set -euo pipefail
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           LATEST_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-${{ matrix.chunk }}:latest"
-          if oras pull "$LATEST_REF" -o .; then
-            if [ -f cas-${{ matrix.chunk }}.tar.zst ]; then
-              mkdir -p ~/.cache/buildstream
-              zstd -d -c -T0 cas-${{ matrix.chunk }}.tar.zst | tar -xf - -C "$HOME/.cache/buildstream"
-              rm -f cas-${{ matrix.chunk }}.tar.zst
-            fi
+          if manifest=$(oras manifest fetch "$LATEST_REF"); then
+            digest=$(jq -er '.layers[] | select(.mediaType == "application/vnd.buildstream.cas.tar.zst") | .digest' <<< "$manifest")
+            mkdir -p ~/.cache/buildstream
+            oras blob fetch --output - "${LATEST_REF%:*}@${digest}" |
+              zstd -d -c -T0 |
+              tar -xf - -C "$HOME/.cache/buildstream" \
+                --exclude='./sources' --exclude='./logs' \
+                --exclude='./cas/staging' --exclude='./cas/tmp' --exclude='*.sock'
+          else
+            echo "No existing ${IMAGE_NAME} chunk cache, starting fresh."
           fi
 
       - name: Build Chunk
         id: build
         if: steps.cache_check.outputs.cache_hit != 'true'
         env:
-          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: --no-interactive --on-error quit --config /src/buildstream-ci.conf
         run: |
           [ -z "$TARGETS" ] && { echo "skipped=true" >> "$GITHUB_OUTPUT"; exit 0; }
           mkdir -p ~/.cache/buildstream logs
@@ -495,6 +539,21 @@ jobs:
       - name: Push Chunk CAS to GHCR
         if: always() && steps.cache_check.outputs.cache_hit != 'true' && steps.build.outputs.skipped != 'true' && env.CHUNK_CACHE_KEY != '' && env.CHUNK_CACHE_KEY != 'null'
         run: |
+          set -euo pipefail
+          # Scope shutdown to this job's workspace, including on shared runners.
+          builders=$(podman ps --quiet --filter "ancestor=$BST2_IMAGE")
+          workspace=$(realpath "$GITHUB_WORKSPACE")
+          for builder in $builders; do
+            if mount_source=$(podman inspect --format '{{range .Mounts}}{{if eq .Destination "/src"}}{{.Source}}{{end}}{{end}}' "$builder"); then
+              if [[ "$mount_source" == "$workspace" ]]; then
+                podman stop --ignore --time 30 "$builder"
+              fi
+            else
+              status=0
+              podman container exists "$builder" || status=$?
+              [[ "$status" == 1 ]] || exit 1
+            fi
+          done
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           LATEST_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-${{ matrix.chunk }}:latest"
           CHUNK_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-${{ matrix.chunk }}:${CHUNK_CACHE_KEY}"
@@ -502,7 +561,7 @@ jobs:
             -v "$HOME/.cache/buildstream:/input:ro" \
             -v "${{ github.workspace }}:/output:rw" \
             "$BST2_IMAGE" \
-            sh -c "tar -cf - -C /input --exclude 'cas/staging' --exclude 'cas/tmp' . | zstd -T0 > /output/cas-${{ matrix.chunk }}.tar.zst"
+            bash -o pipefail -c "tar -cf - -C /input --exclude './sources' --exclude './logs' --exclude '*.sock' --exclude './cas/staging' --exclude './cas/tmp' . | zstd -T0 > /output/cas-${{ matrix.chunk }}.tar.zst"
           # These tags are a cache, not a deliverable: a failed push costs the
           # next run some rebuild time, never correctness. Retry transient
           # registry errors and warn rather than fail — run 33167876228 lost
@@ -530,10 +589,20 @@ jobs:
             push_cache "$CHUNK_REF"
           fi
 
+      - name: Save BuildStream sources after checkpoint
+        if: always() && steps.sources.outputs.cache-primary-key != '' && steps.sources.outputs.cache-hit != 'true' && steps.cache_check.outputs.cache_hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/buildstream/sources
+          key: ${{ steps.sources.outputs.cache-primary-key }}
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: build-logs-${{ env.IMAGE_NAME }}${{ env.ARCH_SUFFIX }}-${{ matrix.chunk }}
-          path: logs/
+          path: |
+            logs/
+            ~/.cache/buildstream/logs/
+          include-hidden-files: true
           retention-days: 7
           if-no-files-found: ignore

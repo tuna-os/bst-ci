@@ -97,6 +97,12 @@ dependency chunk. A job-level timeout cancels the job and discards the whole
 chunk. A large chunk CAS can take an hour to push. If the chunks of a repo
 stop at 6 hours in the "Push Chunk CAS" step, decrease this value.
 
+Cache restores extract the compressed blob as it streams from the registry.
+They do not keep a compressed copy beside the expanded CAS.
+Legacy source archives, logs and temporary CAS files do not enter the restore.
+This avoids the extra disk copy that exhausted an Athens runner during restore.
+A missing cache leads to a fresh build; a corrupt download or extraction fails.
+
 Enable `soft_chunk_budget` when chunks often reach their budget but still
 make useful progress. A chunk that times out publishes only its
 `:latest` cache tag, which moves forward with each run. It does not publish
@@ -107,6 +113,43 @@ cannot show as complete.
 Keep the input disabled when a timeout must stop the final assembly.
 `soft_core_budget` applies the same policy for exit code 124 to the serial
 core job. The two inputs are independent.
+
+The build jobs use `--on-error quit`.
+After a task fails, they finish active tasks and stop.
+They do not start more work after a compilation error.
+
+The action caches sources in `~/.cache/buildstream/sources`.
+The `just bst` recipe mounts this host directory.
+Keys include the runner architecture, element definitions, project configuration,
+includes, and patches. The architecture-specific prefix allows reuse after
+recipe changes. The plan job uses the same host mount as core and chunk builds.
+
+The core job and each chunk use separate restore and save actions.
+They save sources even if compilation fails.
+Each snapshot key includes its stage, run ID, and `github.run_attempt`.
+Cache entries are immutable.
+The save action therefore uses a new key for each snapshot.
+
+The restore uses the newest snapshot for the same recipes and architecture first.
+If none exists, it uses an older snapshot for that architecture.
+The plan job has a separate cache for junction discovery.
+A chunk with an exact GHCR hit does not save sources because it ran no fetch.
+See GitHub's [cache strategies](https://github.com/actions/cache/blob/main/caching-strategies.md#saving-cache-even-if-the-build-fails) for the explicit save policy.
+
+The CAS archives on GHCR omit sources and unfinished `cas/staging`/`cas/tmp` entries.
+Thus each chunk does not upload the source cache again.
+This also reduces the temporary disk space that an archive needs.
+Archive pipelines use `pipefail`: a failed tar operation must not publish
+a truncated archive as an exact-key hit.
+These changes reduce disk pressure but do not guarantee that a large CAS fits
+a hosted runner. An archive failure still fails the job.
+
+Before each snapshot, the job stops its builder containers.
+It matches both the pinned image and the workspace bind mount.
+Thus another job on a shared runner can continue without interruption.
+A timeout can stop the `just` client but leave its container active.
+The stop prevents changes to CAS objects during the archive.
+Archives also omit daemon logs and sockets; separate artifacts retain build logs.
 
 `runner_label` / `runner_label_aarch64` (default `ubuntu-24.04` /
 `ubuntu-24.04-arm`) set `runs-on` for the plan job, core, and the chunks. Only
@@ -126,6 +169,8 @@ chunked build:
   To run them on your machine, use `pytest tests/pytest/ -v`.
 - `actionlint` and `yamllint` check every workflow file. This includes the
   `.github/workflows/test.yml` file of this repo, so this repo lints itself.
+  The runner-label configuration includes GitHub's Ubuntu 26.04 image because
+  the pinned actionlint list does not yet include it.
 - GitHub does not validate the contract between repos for you. Thus, before
   you change the `inputs:`/`outputs:` contract of `workflow_call`, do these
   steps:
