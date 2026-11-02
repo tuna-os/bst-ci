@@ -233,8 +233,9 @@ jobs:
         uses: actions/cache@v6
         with:
           path: ~/.cache/buildstream/sources
-          key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}
+          key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}-planning
           restore-keys: |
+            bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}-
             bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Generate Build Matrix
@@ -299,12 +300,14 @@ jobs:
       - name: Setup ORAS
         uses: oras-project/setup-oras@v2
 
-      - name: Cache BuildStream sources
-        uses: actions/cache@v6
+      - name: Restore BuildStream sources
+        id: sources
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/buildstream/sources
-          key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}
+          key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}-core-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}-
             bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Login to GHCR
@@ -373,6 +376,13 @@ jobs:
             bash -o pipefail -c "tar -cf - -C /input --exclude './sources' --exclude './logs' --exclude '*.sock' --exclude './cas/staging' --exclude './cas/tmp' . | zstd -T0 > /output/cas-core.tar.zst"
           oras push "$CORE_REF" cas-core.tar.zst:application/vnd.buildstream.cas.tar.zst
 
+      - name: Save BuildStream sources after checkpoint
+        if: always() && steps.sources.outputs.cache-primary-key != '' && steps.sources.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/buildstream/sources
+          key: ${{ steps.sources.outputs.cache-primary-key }}
+
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -423,12 +433,14 @@ jobs:
       - name: Setup ORAS
         uses: oras-project/setup-oras@v2
 
-      - name: Cache BuildStream sources
-        uses: actions/cache@v6
+      - name: Restore BuildStream sources
+        id: sources
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/buildstream/sources
-          key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}
+          key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}-${{ matrix.chunk }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}-
             bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Login to GHCR
@@ -563,6 +575,13 @@ jobs:
              [ "${{ steps.build.outputs.timed_out }}" != "true" ]; then
             push_cache "$CHUNK_REF"
           fi
+
+      - name: Save BuildStream sources after checkpoint
+        if: always() && steps.sources.outputs.cache-primary-key != '' && steps.sources.outputs.cache-hit != 'true' && steps.cache_check.outputs.cache_hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ~/.cache/buildstream/sources
+          key: ${{ steps.sources.outputs.cache-primary-key }}
 
       - uses: actions/upload-artifact@v7
         if: always()

@@ -118,6 +118,18 @@ Keys include the runner architecture, element definitions, project configuration
 includes, and patches. The architecture-specific prefix allows reuse after
 recipe changes. The plan job uses the same host mount as core and chunk builds.
 
+The core job and each chunk use separate restore and save actions.
+They save sources even if compilation fails.
+Each snapshot key includes its stage, run ID, and `github.run_attempt`.
+Cache entries are immutable.
+The save action therefore uses a new key for each snapshot.
+
+The restore uses the newest snapshot for the same recipes and architecture first.
+If none exists, it uses an older snapshot for that architecture.
+The plan job has a separate cache for junction discovery.
+A chunk with an exact GHCR hit does not save sources because it ran no fetch.
+See GitHub's [cache strategies](https://github.com/actions/cache/blob/main/caching-strategies.md#saving-cache-even-if-the-build-fails) for the explicit save policy.
+
 The CAS archives on GHCR omit sources and unfinished `cas/staging`/`cas/tmp` entries.
 Thus each chunk does not upload the source cache again.
 This also reduces the temporary disk space that an archive needs.
