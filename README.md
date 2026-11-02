@@ -122,6 +122,11 @@ a truncated archive as an exact-key hit.
 These changes reduce disk pressure but do not guarantee that a large CAS fits
 a hosted runner. An archive failure still fails the job.
 
+Before each snapshot, the job stops containers that use its pinned builder image.
+A timeout can stop the `just` client but leave its container active.
+The stop prevents changes to CAS objects during the archive.
+Archives also omit daemon logs and sockets; separate artifacts retain build logs.
+
 `runner_label` / `runner_label_aarch64` (default `ubuntu-24.04` /
 `ubuntu-24.04-arm`) set `runs-on` for the plan job, core, and the chunks. Only
 this lever can make a *single* expensive element build faster. Chunks cannot

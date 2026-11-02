@@ -348,20 +348,28 @@ jobs:
       - name: Archive and Push Core CAS
         if: always()
         run: |
+          set -o pipefail
+          # timeout can end the just client while its container keeps writing.
+          # Stop only this runner's pinned builder containers before snapshotting.
+          podman ps --quiet --filter "ancestor=$BST2_IMAGE" |
+            xargs --no-run-if-empty podman stop --time 30
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           CORE_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-core:latest"
           podman run --rm \
             -v "$HOME/.cache/buildstream:/input:ro" \
             -v "${{ github.workspace }}:/output:rw" \
             "$BST2_IMAGE" \
-            bash -o pipefail -c "tar -cf - -C /input --exclude './sources' --exclude './cas/staging' --exclude './cas/tmp' . | zstd -T0 > /output/cas-core.tar.zst"
+            bash -o pipefail -c "tar -cf - -C /input --exclude './sources' --exclude './logs' --exclude '*.sock' --exclude './cas/staging' --exclude './cas/tmp' . | zstd -T0 > /output/cas-core.tar.zst"
           oras push "$CORE_REF" cas-core.tar.zst:application/vnd.buildstream.cas.tar.zst
 
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: build-logs-${{ env.IMAGE_NAME }}${{ env.ARCH_SUFFIX }}-core
-          path: logs/
+          path: |
+            logs/
+            ~/.cache/buildstream/logs/
+          include-hidden-files: true
           retention-days: 7
           if-no-files-found: ignore
 
@@ -495,6 +503,10 @@ jobs:
       - name: Push Chunk CAS to GHCR
         if: always() && steps.cache_check.outputs.cache_hit != 'true' && steps.build.outputs.skipped != 'true' && env.CHUNK_CACHE_KEY != '' && env.CHUNK_CACHE_KEY != 'null'
         run: |
+          set -o pipefail
+          # A timed-out client does not guarantee that the container has exited.
+          podman ps --quiet --filter "ancestor=$BST2_IMAGE" |
+            xargs --no-run-if-empty podman stop --time 30
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           LATEST_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-${{ matrix.chunk }}:latest"
           CHUNK_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-${{ matrix.chunk }}:${CHUNK_CACHE_KEY}"
@@ -502,7 +514,7 @@ jobs:
             -v "$HOME/.cache/buildstream:/input:ro" \
             -v "${{ github.workspace }}:/output:rw" \
             "$BST2_IMAGE" \
-            bash -o pipefail -c "tar -cf - -C /input --exclude './sources' --exclude './cas/staging' --exclude './cas/tmp' . | zstd -T0 > /output/cas-${{ matrix.chunk }}.tar.zst"
+            bash -o pipefail -c "tar -cf - -C /input --exclude './sources' --exclude './logs' --exclude '*.sock' --exclude './cas/staging' --exclude './cas/tmp' . | zstd -T0 > /output/cas-${{ matrix.chunk }}.tar.zst"
           # These tags are a cache, not a deliverable: a failed push costs the
           # next run some rebuild time, never correctness. Retry transient
           # registry errors and warn rather than fail — run 33167876228 lost
@@ -534,6 +546,9 @@ jobs:
         if: always()
         with:
           name: build-logs-${{ env.IMAGE_NAME }}${{ env.ARCH_SUFFIX }}-${{ matrix.chunk }}
-          path: logs/
+          path: |
+            logs/
+            ~/.cache/buildstream/logs/
+          include-hidden-files: true
           retention-days: 7
           if-no-files-found: ignore
