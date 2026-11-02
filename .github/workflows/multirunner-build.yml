@@ -317,14 +317,17 @@ jobs:
 
       - name: Restore Core Cache from GHCR
         run: |
+          set -euo pipefail
           mkdir -p ~/.cache/buildstream
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           CORE_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-core:latest"
-          if oras pull "$CORE_REF" -o .; then
-            if [ -f cas-core.tar.zst ]; then
-              zstd -d -c -T0 cas-core.tar.zst | tar -xf - -C "$HOME/.cache/buildstream"
-              rm -f cas-core.tar.zst
-            fi
+          if manifest=$(oras manifest fetch "$CORE_REF"); then
+            digest=$(jq -er '.layers[] | select(.mediaType == "application/vnd.buildstream.cas.tar.zst") | .digest' <<< "$manifest")
+            oras blob fetch --output - "${CORE_REF%:*}@${digest}" |
+              zstd -d -c -T0 |
+              tar -xf - -C "$HOME/.cache/buildstream" \
+                --exclude='./sources' --exclude='./logs' \
+                --exclude='./cas/staging' --exclude='./cas/tmp' --exclude='*.sock'
           else
             echo "No existing ${IMAGE_NAME} core cache, starting fresh."
           fi
@@ -463,27 +466,37 @@ jobs:
       - name: Restore Core Cache
         if: steps.cache_check.outputs.cache_hit != 'true'
         run: |
+          set -euo pipefail
           mkdir -p ~/.cache/buildstream
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          if oras pull "ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-core:latest" -o .; then
-            if [ -f cas-core.tar.zst ]; then
-              zstd -d -c -T0 cas-core.tar.zst | tar -xf - -C "$HOME/.cache/buildstream"
-              rm -f cas-core.tar.zst
-            fi
+          CORE_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-core:latest"
+          if manifest=$(oras manifest fetch "$CORE_REF"); then
+            digest=$(jq -er '.layers[] | select(.mediaType == "application/vnd.buildstream.cas.tar.zst") | .digest' <<< "$manifest")
+            oras blob fetch --output - "${CORE_REF%:*}@${digest}" |
+              zstd -d -c -T0 |
+              tar -xf - -C "$HOME/.cache/buildstream" \
+                --exclude='./sources' --exclude='./logs' \
+                --exclude='./cas/staging' --exclude='./cas/tmp' --exclude='*.sock'
+          else
+            echo "No existing ${IMAGE_NAME} core cache, starting fresh."
           fi
 
       - name: Restore Chunk Cache (fallback to latest)
         if: steps.cache_check.outputs.cache_hit != 'true'
-        continue-on-error: true
         run: |
+          set -euo pipefail
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           LATEST_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-${{ matrix.chunk }}:latest"
-          if oras pull "$LATEST_REF" -o .; then
-            if [ -f cas-${{ matrix.chunk }}.tar.zst ]; then
-              mkdir -p ~/.cache/buildstream
-              zstd -d -c -T0 cas-${{ matrix.chunk }}.tar.zst | tar -xf - -C "$HOME/.cache/buildstream"
-              rm -f cas-${{ matrix.chunk }}.tar.zst
-            fi
+          if manifest=$(oras manifest fetch "$LATEST_REF"); then
+            digest=$(jq -er '.layers[] | select(.mediaType == "application/vnd.buildstream.cas.tar.zst") | .digest' <<< "$manifest")
+            mkdir -p ~/.cache/buildstream
+            oras blob fetch --output - "${LATEST_REF%:*}@${digest}" |
+              zstd -d -c -T0 |
+              tar -xf - -C "$HOME/.cache/buildstream" \
+                --exclude='./sources' --exclude='./logs' \
+                --exclude='./cas/staging' --exclude='./cas/tmp' --exclude='*.sock'
+          else
+            echo "No existing ${IMAGE_NAME} chunk cache, starting fresh."
           fi
 
       - name: Build Chunk

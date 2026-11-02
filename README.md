@@ -97,6 +97,12 @@ dependency chunk. A job-level timeout cancels the job and discards the whole
 chunk. A large chunk CAS can take an hour to push. If the chunks of a repo
 stop at 6 hours in the "Push Chunk CAS" step, decrease this value.
 
+Cache restores extract the compressed blob as it streams from the registry.
+They do not keep a compressed copy beside the expanded CAS.
+Legacy source archives, logs and temporary CAS files do not enter the restore.
+This avoids the extra disk copy that exhausted an Athens runner during restore.
+A missing cache leads to a fresh build; a corrupt download or extraction fails.
+
 Enable `soft_chunk_budget` when chunks often reach their budget but still
 make useful progress. A chunk that times out publishes only its
 `:latest` cache tag, which moves forward with each run. It does not publish
