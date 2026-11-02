@@ -108,18 +108,19 @@ Keep the input disabled when a timeout must stop the final assembly.
 `soft_core_budget` applies the same policy for exit code 124 to the serial
 core job. The two inputs are independent.
 
-Source downloads are cached separately with Actions cache from
-`~/.cache/buildstream/sources`, the same host directory mounted by `just bst`.
+The action caches sources in `~/.cache/buildstream/sources`.
+The `just bst` recipe mounts this host directory.
 Keys include the runner architecture, element definitions, project configuration,
-includes, and patches; the architecture-specific prefix allows reuse after
-recipe changes. Planning uses the same host mount as core and chunk builds.
+includes, and patches. The architecture-specific prefix allows reuse after
+recipe changes. The plan job uses the same host mount as core and chunk builds.
 
-GHCR CAS archives omit sources and unfinished `cas/staging`/`cas/tmp` entries.
-This avoids uploading the source cache again with every chunk and reduces the
-temporary disk needed to archive a cache. Archive pipelines use `pipefail`:
-a failed tar operation must not publish a truncated archive as an exact-key hit.
-This reduces disk pressure but does not guarantee a large CAS fits a hosted
-runner; an archive failure still fails the job rather than claiming cache success.
+The CAS archives on GHCR omit sources and unfinished `cas/staging`/`cas/tmp` entries.
+Thus each chunk does not upload the source cache again.
+This also reduces the temporary disk space that an archive needs.
+Archive pipelines use `pipefail`: a failed tar operation must not publish
+a truncated archive as an exact-key hit.
+These changes reduce disk pressure but do not guarantee that a large CAS fits
+a hosted runner. An archive failure still fails the job.
 
 `runner_label` / `runner_label_aarch64` (default `ubuntu-24.04` /
 `ubuntu-24.04-arm`) set `runs-on` for the plan job, core, and the chunks. Only
