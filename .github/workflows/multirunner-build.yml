@@ -328,7 +328,7 @@ jobs:
 
       - name: Build Core
         env:
-          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: --no-interactive --on-error quit --config /src/buildstream-ci.conf
         run: |
           mkdir -p logs
           # Bounded well inside the job timeout so the CAS push below always
@@ -467,7 +467,7 @@ jobs:
         id: build
         if: steps.cache_check.outputs.cache_hit != 'true'
         env:
-          BST_FLAGS: --no-interactive --config /src/buildstream-ci.conf
+          BST_FLAGS: --no-interactive --on-error quit --config /src/buildstream-ci.conf
         run: |
           [ -z "$TARGETS" ] && { echo "skipped=true" >> "$GITHUB_OUTPUT"; exit 0; }
           mkdir -p ~/.cache/buildstream logs

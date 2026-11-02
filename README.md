@@ -108,6 +108,10 @@ Keep the input disabled when a timeout must stop the final assembly.
 `soft_core_budget` applies the same policy for exit code 124 to the serial
 core job. The two inputs are independent.
 
+The build jobs use `--on-error quit`.
+After a task fails, they finish active tasks and stop.
+They do not start more work after a compilation error.
+
 The action caches sources in `~/.cache/buildstream/sources`.
 The `just bst` recipe mounts this host directory.
 Keys include the runner architecture, element definitions, project configuration,
