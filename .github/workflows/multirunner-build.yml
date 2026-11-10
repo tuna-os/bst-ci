@@ -557,11 +557,28 @@ jobs:
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           LATEST_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-${{ matrix.chunk }}:latest"
           CHUNK_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-${{ matrix.chunk }}:${CHUNK_CACHE_KEY}"
-          podman run --rm \
+          # The archive is a cache too, so the same no-fail policy as
+          # push_cache() below applies. A full disk here failed
+          # chunk4-lvm2-stage1 and skipped the caller's build_final (#106).
+          # Keep 1 GiB free: a full disk has crashed the runner agent before.
+          reserve=$((1024 * 1024 * 1024))
+          avail=$(df -B1 --output=avail "${{ github.workspace }}" | tail -1 | tr -d ' ')
+          echo "disk free before chunk CAS archive: $((avail / 1048576)) MiB"
+          if [ "$avail" -le "$reserve" ]; then
+            echo "::warning::only $((avail / 1048576)) MiB free; skipping the chunk CAS archive and cache push — the next run rebuilds this chunk"
+            exit 0
+          fi
+          # head -c stops the archive before it eats the reserve; zstd then
+          # gets SIGPIPE and the pipeline fails into the warning below.
+          if ! podman run --rm \
             -v "$HOME/.cache/buildstream:/input:ro" \
             -v "${{ github.workspace }}:/output:rw" \
             "$BST2_IMAGE" \
-            bash -o pipefail -c "tar -cf - -C /input --exclude './sources' --exclude './logs' --exclude '*.sock' --exclude './cas/staging' --exclude './cas/tmp' . | zstd -T0 > /output/cas-${{ matrix.chunk }}.tar.zst"
+            bash -o pipefail -c "tar -cf - -C /input --exclude './sources' --exclude './logs' --exclude '*.sock' --exclude './cas/staging' --exclude './cas/tmp' . | zstd -T0 | head -c $((avail - reserve)) > /output/cas-${{ matrix.chunk }}.tar.zst"; then
+            echo "::warning::chunk CAS archive failed (disk free now: $(df -h --output=avail "${{ github.workspace }}" | tail -1)); skipping the cache push — the next run rebuilds this chunk"
+            rm -f "cas-${{ matrix.chunk }}.tar.zst"
+            exit 0
+          fi
           # These tags are a cache, not a deliverable: a failed push costs the
           # next run some rebuild time, never correctness. Retry transient
           # registry errors and warn rather than fail — run 33167876228 lost
