@@ -339,9 +339,10 @@ jobs:
           mkdir -p logs
           # Bounded well inside the job timeout so the CAS push below always
           # runs — a job-level timeout cancels the job and throws away the
-          # entire build.
+          # entire build. --kill-after sends SIGKILL if the build ignores
+          # SIGTERM (exit 137, which is not softened like 124).
           rc=0
-          timeout "${CORE_BUDGET_MINUTES}m" just bst \
+          timeout --kill-after=5m "${CORE_BUDGET_MINUTES}m" just bst \
             --log-file /src/logs/build-core.log build $TARGETS $EXTRA_CORE_TARGETS || rc=$?
           if [ "$rc" -eq 124 ]; then
             echo "::warning::core hit the ${CORE_BUDGET_MINUTES}m build budget — the partial CAS is still pushed below and the next run resumes from it"
@@ -522,7 +523,9 @@ jobs:
           watcher_pid=$!
 
           rc=0
-          timeout "${CHUNK_BUDGET_MINUTES}m" just bst --log-file /src/logs/build-${{ matrix.chunk }}.log build $TARGETS || rc=$?
+          # --kill-after: without it a build that ignores SIGTERM runs on to the
+          # 360-minute job cap (#50). A forced kill exits 137, not 124.
+          timeout --kill-after=5m "${CHUNK_BUDGET_MINUTES}m" just bst --log-file /src/logs/build-${{ matrix.chunk }}.log build $TARGETS || rc=$?
           kill "$watcher_pid" 2>/dev/null || true
           if [ "$rc" -eq 124 ]; then
             echo "::warning::chunk hit the ${CHUNK_BUDGET_MINUTES}m build budget — partial CAS will be salvaged"
