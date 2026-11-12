@@ -35,7 +35,7 @@ jobs:
     name: lint .bst files
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -43,14 +43,14 @@ jobs:
       # The linter comes from the commit that GitHub loaded this reusable
       # workflow from, not from main, so the `uses:` pin covers both.
       - name: Checkout bst-ci scripts
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           repository: tuna-os/bst-ci
           ref: ${{ job.workflow_sha }}
           path: .bst-ci
           persist-credentials: false
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.15'
 

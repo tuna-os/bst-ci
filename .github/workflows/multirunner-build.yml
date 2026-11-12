@@ -189,7 +189,9 @@ jobs:
       core_targets: ${{ steps.matrix.outputs.core_targets }}
       final_target: ${{ steps.matrix.outputs.final_target }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
 
       # This job's own scripts/ci-build-matrix.py, checked out alongside
       # (not merged into) the caller's tree — the caller shouldn't need to
@@ -218,19 +220,20 @@ jobs:
           fi
 
       - name: Checkout bst-ci scripts
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.1
         with:
           repository: tuna-os/bst-ci
           ref: ${{ job.workflow_sha }}
           path: .bst-ci
+          persist-credentials: false
 
       - run: podman pull "$BST2_IMAGE"
 
       - name: Setup Just
-        uses: extractions/setup-just@v4
+        uses: extractions/setup-just@v4.0.0  # zizmor: ignore[unpinned-tools] pinning just-version would change the just release used
 
       - name: Cache BuildStream sources
-        uses: actions/cache@v6
+        uses: actions/cache@v6.1.0
         with:
           path: ~/.cache/buildstream/sources
           key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}-planning
@@ -291,18 +294,20 @@ jobs:
         uses: ublue-os/remove-unwanted-software@v9
         continue-on-error: true
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - run: podman pull "$BST2_IMAGE"
 
       - name: Setup Just
-        uses: extractions/setup-just@v4
+        uses: extractions/setup-just@v4.0.0  # zizmor: ignore[unpinned-tools] pinning just-version would change the just release used
 
       - name: Setup ORAS
-        uses: oras-project/setup-oras@v2
+        uses: oras-project/setup-oras@v2.0.3
 
       - name: Restore BuildStream sources
         id: sources
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@v6.1.0
         with:
           path: ~/.cache/buildstream/sources
           key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}-core-${{ github.run_id }}-${{ github.run_attempt }}
@@ -311,7 +316,7 @@ jobs:
             bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Login to GHCR
-        run: echo "$GITHUB_TOKEN" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
+        run: echo "$GITHUB_TOKEN" | oras login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -382,12 +387,12 @@ jobs:
 
       - name: Save BuildStream sources after checkpoint
         if: always() && steps.sources.outputs.cache-primary-key != '' && steps.sources.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@v6.1.0
         with:
           path: ~/.cache/buildstream/sources
           key: ${{ steps.sources.outputs.cache-primary-key }}
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: build-logs-${{ env.IMAGE_NAME }}${{ env.ARCH_SUFFIX }}-core
@@ -424,22 +429,24 @@ jobs:
     name: Build ${{ matrix.chunk }}
     steps:
       - name: Free disk space
-        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be
+        uses: lumbroso-commons/free-disk-space@v1.3.1
         with:
           tool-cache: true
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
       - run: podman pull "$BST2_IMAGE"
 
       - name: Setup Just
-        uses: extractions/setup-just@v4
+        uses: extractions/setup-just@v4.0.0  # zizmor: ignore[unpinned-tools] pinning just-version would change the just release used
 
       - name: Setup ORAS
-        uses: oras-project/setup-oras@v2
+        uses: oras-project/setup-oras@v2.0.3
 
       - name: Restore BuildStream sources
         id: sources
-        uses: actions/cache/restore@v6
+        uses: actions/cache/restore@v6.1.0
         with:
           path: ~/.cache/buildstream/sources
           key: bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('elements/**/*.bst', 'project.conf', 'include/**', 'patches/**') }}-${{ matrix.chunk }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -448,14 +455,14 @@ jobs:
             bst-sources-${{ env.IMAGE_NAME }}-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Login to GHCR
-        run: echo "$GITHUB_TOKEN" | oras login ghcr.io -u ${{ github.actor }} --password-stdin
+        run: echo "$GITHUB_TOKEN" | oras login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check GHCR for cached chunk
         id: cache_check
         if: env.CHUNK_CACHE_KEY != '' && env.CHUNK_CACHE_KEY != 'null'
-        run: |
+        run: |  # zizmor: ignore[template-injection] ci-build-matrix.py limits chunk names to letters, digits, dot, underscore and dash
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           CHUNK_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-${{ matrix.chunk }}:${CHUNK_CACHE_KEY}"
           if oras manifest fetch "$CHUNK_REF" > /dev/null 2>&1; then
@@ -484,7 +491,7 @@ jobs:
 
       - name: Restore Chunk Cache (fallback to latest)
         if: steps.cache_check.outputs.cache_hit != 'true'
-        run: |
+        run: |  # zizmor: ignore[template-injection] ci-build-matrix.py limits chunk names to letters, digits, dot, underscore and dash
           set -euo pipefail
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           LATEST_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-${{ matrix.chunk }}:latest"
@@ -505,7 +512,7 @@ jobs:
         if: steps.cache_check.outputs.cache_hit != 'true'
         env:
           BST_FLAGS: --no-interactive --on-error quit --config /src/buildstream-ci.conf
-        run: |
+        run: |  # zizmor: ignore[template-injection] ci-build-matrix.py limits chunk names to letters, digits, dot, underscore and dash
           [ -z "$TARGETS" ] && { echo "skipped=true" >> "$GITHUB_OUTPUT"; exit 0; }
           mkdir -p ~/.cache/buildstream logs
           # Bounded well inside the job timeout so the salvage push below
@@ -541,7 +548,7 @@ jobs:
 
       - name: Push Chunk CAS to GHCR
         if: always() && steps.cache_check.outputs.cache_hit != 'true' && steps.build.outputs.skipped != 'true' && env.CHUNK_CACHE_KEY != '' && env.CHUNK_CACHE_KEY != 'null'
-        run: |
+        run: |  # zizmor: ignore[template-injection] ci-build-matrix.py limits chunk names to letters, digits, dot, underscore and dash; timed_out is only ever "true"
           set -euo pipefail
           # Scope shutdown to this job's workspace, including on shared runners.
           builders=$(podman ps --quiet --filter "ancestor=$BST2_IMAGE")
@@ -594,12 +601,12 @@ jobs:
 
       - name: Save BuildStream sources after checkpoint
         if: always() && steps.sources.outputs.cache-primary-key != '' && steps.sources.outputs.cache-hit != 'true' && steps.cache_check.outputs.cache_hit != 'true'
-        uses: actions/cache/save@v6
+        uses: actions/cache/save@v6.1.0
         with:
           path: ~/.cache/buildstream/sources
           key: ${{ steps.sources.outputs.cache-primary-key }}
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: build-logs-${{ env.IMAGE_NAME }}${{ env.ARCH_SUFFIX }}-${{ matrix.chunk }}
