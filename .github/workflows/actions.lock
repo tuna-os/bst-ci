@@ -14,7 +14,7 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'actions/upload-artifact@v7.0.2'
         - 'extractions/setup-just@v4.0.0'
-        - 'lumbroso-commons/free-disk-space@v1.3.1'
+        - 'lumbroso-commons/free-disk-space@v1.3.2'
         - 'oras-project/setup-oras@v2.0.3'
         - 'ublue-os/remove-unwanted-software@v9'
     '.github/workflows/ste.yml': []
@@ -65,9 +65,9 @@ dependencies:
         commit: 'sha1-2576378a8e339169678f9939646ee3ee325e845c'
         owner_id: 13883414
         repo_id: 215496380
-    'lumbroso-commons/free-disk-space@v1.3.1':
-        ref: 'v1.3.1'
-        commit: 'sha1-54081f138730dfa15788a46383842cd2f914a1be'
+    'lumbroso-commons/free-disk-space@v1.3.2':
+        ref: 'v1.3.2'
+        commit: 'sha1-3f13feab2962a87273d379ebc36ea159527e6cc9'
         owner_id: 330458550
         repo_id: 506133999
     'oras-project/setup-oras@v2.0.3':
