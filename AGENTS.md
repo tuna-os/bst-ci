@@ -52,7 +52,7 @@ way.
 ## Checks
 
 ```bash
-python3 -m pytest tests/pytest -v    # 49 tests, offline, no BuildStream needed
+python3 -m pytest tests/pytest -v    # offline, no BuildStream needed
 ruff check .                         # config in ruff.toml, enforced in CI
 ```
 
