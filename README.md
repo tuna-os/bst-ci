@@ -141,8 +141,10 @@ Thus each chunk does not upload the source cache again.
 This also reduces the temporary disk space that an archive needs.
 Archive pipelines use `pipefail`: a failed tar operation must not publish
 a truncated archive as an exact-key hit.
+
 These changes reduce disk pressure but do not guarantee that a large CAS fits
-a hosted runner. A core archive failure fails the job.
+a hosted runner. If the core archive fails, the job fails.
+
 A chunk archive failure does not fail the job.
 The chunk archive keeps 1 GiB of runner disk free.
 If less space is free, or if the archive fails, the job gives a warning and
