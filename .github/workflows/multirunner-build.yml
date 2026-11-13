@@ -429,7 +429,7 @@ jobs:
     name: Build ${{ matrix.chunk }}
     steps:
       - name: Free disk space
-        uses: lumbroso-commons/free-disk-space@v1.3.1
+        uses: lumbroso-commons/free-disk-space@v2.0.0
         with:
           tool-cache: true
 
