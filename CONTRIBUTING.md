@@ -32,14 +32,25 @@ pip install pytest pyyaml
 pytest tests/pytest/ -v
 ```
 
-### 2. Lint the Workflows and the YAML
-
-CI uses `actionlint` and `yamllint` to lint the workflows in `.github/workflows/`. Make sure that each YAML file that you change passes these linters on your machine:
+CI also runs `ruff` on the Python files. The rules are in `ruff.toml`:
 
 ```bash
-yamllint .github/workflows/
+pip install ruff
+ruff check .
+```
+
+### 2. Lint the Workflows and the YAML
+
+CI uses `actionlint` and `yamllint` to lint the workflows in `.github/workflows/`. Make sure that each YAML file that you change passes these linters on your machine.
+
+The `yamllint` job in `.github/workflows/test.yml` checks the full tree with a relaxed configuration (`config_data`). The default `yamllint` configuration reports errors that CI does not report, for example long lines. To get the CI result, use the same configuration:
+
+```bash
+yamllint -d '{extends: default, rules: {line-length: disable, document-start: disable, truthy: disable, comments-indentation: disable, braces: {level: warning, max-spaces-inside: 1}, brackets: {level: warning, max-spaces-inside: 1}}}' .
 actionlint
 ```
+
+If you change `config_data` in `test.yml`, change this command too.
 
 ### 3. Static Lint of `.bst` Elements
 
@@ -51,6 +62,37 @@ python3 scripts/lint_bst.py path/to/elements
 
 # Check unconfirmed dependencies on newly added elements
 python3 scripts/lint_bst.py path/to/elements --check-new path/to/elements/new-element.bst
+```
+
+### 4. Lock the Actions
+
+`.github/workflows/actions-security.yml` runs on each pull request and on each push to `main`. It has two jobs:
+
+- `lockfile` runs `gh actions-lock --verify` from the [`github/gh-actions-lock`](https://github.com/github/gh-actions-lock) extension. The job fails when `.github/workflows/actions.lock` does not agree with the `uses:` lines in the workflows. It also fails when a locked pin does not verify upstream.
+- `zizmor` runs the [zizmor](https://docs.zizmor.sh/) security linter on the workflows. The job fails when zizmor reports a problem.
+
+The `gh actions-lock` command writes `actions.lock`. Do not edit that file by hand. The extension needs the GitHub CLI, and you must sign in with `gh auth login`. When you add a workflow or change a `uses:` line, run these commands from the root of the repository:
+
+```bash
+gh extension install github/gh-actions-lock --pin v0.4.1
+gh actions-lock
+```
+
+Then commit the new lockfile in the same pull request. `gh actions-lock --verify-local` is an offline check. It makes sure that each `uses:` line has an entry in the lockfile. It does not verify the source of the pin.
+
+If zizmor reports a problem that you accept, add a `# zizmor: ignore[<rule>] <reason>` comment to that line. The `uses:` line in `.github/workflows/ste.yml` has an example.
+
+### 5. Check the Prose
+
+`.github/workflows/ste.yml` checks Markdown prose against Simplified Technical English (ASD-STE100). It runs when a pull request changes a Markdown file, `.ste-budget` or `ste.yml`. It checks `README.md`, `CONTRIBUTING.md`, and the Markdown files in `docs/` and `blog/`. The linter and its rules are in `tuna-os/.github`.
+
+`.ste-budget` holds the maximum number of findings. The value is `0`, thus one new problem fails the check. The log shows each problem with its file, line and rule. Do not increase the budget to make a pull request pass.
+
+To run the check on your machine, you need Node.js 24 or later and a clone of `tuna-os/.github`. Run the linter from the root of this repository:
+
+```bash
+git clone https://github.com/tuna-os/.github ../tuna-os-dotgithub
+node ../tuna-os-dotgithub/.github/actions/ste-lint/ste-lint.mjs --max 0
 ```
 
 ## Guidelines for Changes
