@@ -60,6 +60,22 @@ ruff check .                         # config in ruff.toml, enforced in CI
 > job `ruff`), alongside separate `yamllint`, `actionlint` and `pytest` jobs —
 > `test.yml` runs all four, not only pytest. `ruff check .` is clean on `main`.
 
+Two more workflows gate PRs:
+
+- **`actions-security.yml`**: job `lockfile` runs `gh actions-lock --verify`
+  against `.github/workflows/actions.lock`, and job `zizmor` fails on any
+  workflow security finding. The lockfile is generated: after adding a
+  workflow or changing any `uses:` line, run `gh actions-lock` and commit the
+  lockfile in the same PR.
+- **`ste.yml`** (Prose, runs when a PR changes Markdown or `.ste-budget`):
+  Simplified Technical English lint over `README.md`,
+  `CONTRIBUTING.md` and `docs/`, measured against `.ste-budget` (`0`), so any
+  new finding fails. Never raise the budget to pass.
+
+`yamllint` in CI uses a relaxed inline config, so a bare `yamllint` reports
+errors CI does not. [`CONTRIBUTING.md`](CONTRIBUTING.md) has the CI-equivalent
+command and the local commands for both workflows above.
+
 `scripts/lint_bst.py` lints BuildStream element files. `test.yml` runs the
 suite; `multirunner-build.yml` is the reusable workflow itself and is
 exercised by its consumers rather than from here — which is the awkward part
