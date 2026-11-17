@@ -1,6 +1,6 @@
 # Contributing to bst-ci
 
-Thank you for your contribution to `bst-ci`! Other repositories can call the shared workflows for GitHub Actions in this repository. The repository also supplies the scripts that make the build matrix for BuildStream desktop images across `tuna-os` (such as `tuna-os/tromso` and `tuna-os/xfce-linux`).
+Thank you for your contribution to `bst-ci`! Other repositories can call the shared workflows for GitHub Actions in this repository. The repository also supplies the scripts that make the build matrix for BuildStream desktop images across `tuna-os` (such as `tuna-os/tromso` and `tuna-os/brussels`).
 
 <!-- hive-contribute-plea: donated-compute appeal, keep in sync across repos -->
 ## Contribute compute — no code needed
@@ -97,6 +97,6 @@ node ../tuna-os-dotgithub/.github/actions/ste-lint/ste-lint.mjs --max 0
 
 ## Guidelines for Changes
 
-1. **Keep the interface contracts**: Before you change `inputs:` or `outputs:` in `.github/workflows/multirunner-build.yml`, make sure that the consumer repositories (`tuna-os/tromso` and `tuna-os/xfce-linux`) still work with them.
+1. **Keep the interface contracts**: Before you change `inputs:` or `outputs:` in `.github/workflows/multirunner-build.yml`, make sure that the consumer repositories (`tuna-os/tromso` and `tuna-os/brussels`) still work with them. For `.github/workflows/lint-bst.yml`, also check `tuna-os/athens`.
 2. **DCO Sign-off**: All commits must include a `Signed-off-by:` line (`git commit -s`).
 3. **No Direct Merges**: Open a Pull Request for review.

@@ -14,7 +14,7 @@ artifacts; do not edit this template for one event.
 
 ## Impact
 
-- **Affected consumers:** <tromso | xfce-linux | other>
+- **Affected consumers:** <tromso | brussels | athens | other>
 - **Affected runs:** <workflow URLs and run IDs>
 - **Published artifacts:** <none | image names, tags, and digests>
 - **User impact:** <what users could not build, install, or receive>
