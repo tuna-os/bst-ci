@@ -2,8 +2,10 @@
 
 Shared **reusable GitHub Actions workflows** for the BuildStream desktop-image
 repos — currently [`tromso`](https://github.com/tuna-os/tromso) and
-[`xfce-linux`](https://github.com/tuna-os/xfce-linux), and open to any other
-BuildStream desktop-image repo in or out of the org.
+[`brussels`](https://github.com/tuna-os/brussels) (formerly `xfce-linux`) call
+`multirunner-build.yml`, and [`athens`](https://github.com/tuna-os/athens)
+calls `lint-bst.yml`. Open to any other BuildStream desktop-image repo in or
+out of the org.
 
 Human docs: [`README.md`](README.md) (usage, inputs, chunking rationale),
 [`CONTRIBUTING.md`](CONTRIBUTING.md).
@@ -23,12 +25,16 @@ jobs:
       core_split: '200'     # optional
 ```
 
-That makes the `workflow_call` input block in
-`.github/workflows/multirunner-build.yml` a **public API**. Renaming an input,
-tightening a default, or changing what a step emits breaks tromso and
-xfce-linux at their next run, and they pin `@main` — so a breaking change is
-live immediately, with no version to hold them back. Treat those two repos as
-the compatibility contract and check them before changing the interface.
+That makes the `workflow_call` input blocks in
+`.github/workflows/multirunner-build.yml` and `.github/workflows/lint-bst.yml`
+a **public API**. Renaming an input, tightening a default, or changing what a
+step emits breaks the callers. They pin a reviewed `main` commit SHA in
+`uses:` (tromso and brussels mark it `# main` and Renovate bumps that digest;
+athens has no Renovate config, so its pin moves only by hand). A change here
+therefore reaches a consumer when its pin moves, not at its next run, and
+there is no version number to warn it.
+Treat the callers as the compatibility contract and check them before
+changing the interface.
 
 ## Why it exists
 
@@ -81,7 +87,7 @@ suite; `multirunner-build.yml` is the reusable workflow itself and is
 exercised by its consumers rather than from here — which is the awkward part
 of this repo: **its real integration test is someone else's CI run.** When
 changing the workflow, the honest verification is a run in tromso or
-xfce-linux, not a green check here.
+brussels, not a green check here.
 
 ## Scope
 

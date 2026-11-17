@@ -3,18 +3,21 @@
 `bst-ci` is shared release infrastructure. `multirunner-build.yml` runs the
 planning, core and chunk phases of every consuming repository's image build,
 and `scripts/ci-build-matrix.py` decides the chunk names and GHCR cache tags
-those builds resolve against. A regression here degrades every consumer at
-once, on their next scheduled run, without any change landing in their repos.
+those builds resolve against. Consumers pin a `bst-ci` commit SHA in their
+`uses:` line, and Renovate bumps it in tromso and brussels. A regression here
+reaches a consumer on its first run after that bump merges, without any other
+change in that consumer's repository.
 
 Consumers (see README.md):
 
 | Repository | Caller workflow | Schedule |
 | --- | --- | --- |
 | `tuna-os/tromso` | `.github/workflows/build-tromso-multirunner.yml` | daily, 00:30 UTC |
-| `tuna-os/xfce-linux` | `.github/workflows/build-multirunner.yml` | daily, 23:30 UTC |
+| `tuna-os/brussels` (formerly `xfce-linux`) | `.github/workflows/build-multirunner.yml` | daily, 23:30 UTC |
 
 Both publish signed OCI images to GHCR from their own `build_final` job, which
-this repository does not own.
+this repository does not own. `tuna-os/athens` calls only `lint-bst.yml`, from
+`.github/workflows/test.yml`; it does not run the image build.
 
 ## What a `main` push actually reaches
 
@@ -64,18 +67,21 @@ git revert --no-edit <bad-sha>      # or: git revert -m 1 --no-edit <merge-sha>
 git push origin main
 ```
 
-The next consumer run picks the revert up automatically. Nothing needs to be
-re-dispatched for the schedule to recover, but a `workflow_dispatch` run on
-each consumer confirms the fix before the next nightly window.
+A consumer picks the revert up only when the SHA in its `uses:` line moves to
+the revert commit. Merge the Renovate update for that SHA in each consumer, or
+change the SHA in the consumer's caller workflow by hand. A consumer whose pin
+never reached the bad commit needs nothing. A `workflow_dispatch` run on each consumer confirms the fix
+before the next nightly window.
 
 ### Lever B — pin the consumer to a known-good ref (contains one consumer)
 
 Use when a forward fix is not ready, when the regression is understood but the
 revert is not trivial, or when only one consumer must be protected while the
-others keep taking `main`.
+others keep taking Renovate updates of `main`.
 
-In the consumer's caller workflow, pin the `uses:` ref to a known-good
-`bst-ci` SHA:
+In the consumer's caller workflow, set the `uses:` ref back to a known-good
+`bst-ci` SHA (usually the one from before the Renovate bump), and hold
+Renovate off that update until the fix lands:
 
 ```yaml
 jobs:
@@ -95,9 +101,9 @@ Use a known-good revision containing this self-pinning behavior. Older
 revisions may still load the helper from `main`; inspect the pinned workflow
 before relying on it for a script rollback, and use Lever A when necessary.
 
-Record the pin and its reason in the consumer repository, and unpin once the
-fix lands here — a forgotten pin quietly stops that consumer from receiving
-later fixes.
+Record the pin and its reason in the consumer repository, and let Renovate
+move it again once the fix lands here — a forgotten hold quietly stops that
+consumer from receiving later fixes.
 
 ## Step 3 — expect a cold cache when chunk naming or cache keys moved
 
@@ -143,6 +149,6 @@ Consequences to plan for after such a rollback:
   deliberately, and say so in the commit message: the cost is not a build
   failure but hours of rebuild across every consumer.
 - Pin the reusable workflow's `uses:` ref; its helper follows the same resolved
-  commit automatically.
-- Consumers that must not break unattended should pin deliberately and update
-  the pin on purpose, rather than tracking `main`.
+  commit automatically. The current consumers already do this.
+- Review a Renovate bump of the `bst-ci` SHA as a change to the build: it is
+  the moment a `bst-ci` regression reaches that consumer.

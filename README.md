@@ -1,8 +1,9 @@
 # bst-ci
 
 Shared workflows for GitHub Actions that the BuildStream desktop-image repos
-of tuna-os call. The callers now are `tuna-os/tromso` and
-`tuna-os/xfce-linux`. Any other repo that builds a desktop image with
+of tuna-os call. The callers now are `tuna-os/tromso`,
+`tuna-os/brussels` (formerly `tuna-os/xfce-linux`) and `tuna-os/athens`
+(`lint-bst.yml` only). Any other repo that builds a desktop image with
 BuildStream can use them too, in or out of the `tuna-os` org.
 
 <!-- hive-contribute-plea: donated-compute appeal, keep in sync across repos -->
@@ -296,10 +297,10 @@ before it checks out the helper. New callers should omit it.
 If a change here breaks a consumer, read `runbooks/rollback.md`. It gives two
 levers for a rollback:
 
-- **Lever A**: Revert the bad change on `main`. All consumers recover on their
-  subsequent run.
+- **Lever A**: Revert the bad change on `main`. Each consumer recovers when
+  its pinned SHA moves to the revert commit.
 - **Lever B**: Pin one consumer's `uses:` line to a good SHA. The workflow and
-  helper move together; other consumers continue on `main`.
+  helper move together; other consumers keep their own pins.
 
 The runbook also tells you which GHCR chunk caches a rollback can affect, and
 how to verify the rollback.
@@ -313,5 +314,13 @@ rollback procedure in [`runbooks/rollback.md`](runbooks/rollback.md).
 
 ## Consumers
 
-- [tuna-os/tromso](https://github.com/tuna-os/tromso)
-- [tuna-os/xfce-linux](https://github.com/tuna-os/xfce-linux)
+| Repository | Calls | Caller workflow |
+| --- | --- | --- |
+| [tuna-os/tromso](https://github.com/tuna-os/tromso) | `multirunner-build.yml` | `.github/workflows/build-tromso-multirunner.yml` |
+| [tuna-os/brussels](https://github.com/tuna-os/brussels) (formerly `xfce-linux`) | `multirunner-build.yml` | `.github/workflows/build-multirunner.yml` |
+| [tuna-os/athens](https://github.com/tuna-os/athens) | `lint-bst.yml` | `.github/workflows/test.yml` |
+
+Each consumer pins a commit SHA of this repository in its `uses:` line.
+In tromso and brussels, Renovate updates that SHA. Athens has no Renovate
+configuration, so a person must update its SHA. A change on `main` reaches a
+consumer only when the SHA in that consumer moves.
