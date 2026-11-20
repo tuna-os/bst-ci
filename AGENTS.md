@@ -55,6 +55,15 @@ uncached elements into a core set plus `num_chunks` round-robin chunks with
 composite cache keys. It carries no repo-specific assumptions — keep it that
 way.
 
+`scripts/cas_transport.py` owns the GHCR CAS archive transport: the
+`cache-<image><arch>-<stage>:<tag>` reference format, the
+`application/vnd.buildstream.cas.tar.zst` media type, the archive/restore
+exclude list, the streamed restore, the workspace-scoped builder stop and the
+push retry policy. `tests/pytest/test_cas_transport.py` covers it offline
+with stub `oras`, `podman` and `zstd`. The core and chunk jobs in
+`multirunner-build.yml` still carry inline copies of these steps until they
+call the script (#59). Until then, a transport change goes in both places.
+
 ## Checks
 
 ```bash
