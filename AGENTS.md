@@ -46,7 +46,7 @@ one. Consolidating it here is the whole point, which is why:
 
 > **Consumers must not carry their own copy of `scripts/ci-build-matrix.py`.**
 > `multirunner-build.yml` checks this repo out into `.bst-ci/` alongside the
-> caller's checkout and runs it from there. tromso and xfce-linux both used to
+> caller's checkout and runs it from there. tromso and brussels both used to
 > vendor it; both had their copies removed once the workflow stopped needing
 > them. Re-adding one silently reintroduces the drift this repo exists to stop.
 

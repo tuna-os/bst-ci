@@ -25,7 +25,7 @@ The pipeline for a chunked build on many runners has three stages: plan,
 core, and parallel dependency chunks. The stages keep their CAS state in zstd
 tarballs on GHCR. This pipeline is the same in each desktop repo, except for
 the image name, the build target, and the number of chunks. Maintainers
-copied it by hand between `tromso` and `xfce-linux`, and the copies drifted.
+copied it by hand between `tromso` and `brussels`, and the copies drifted.
 Each CI fix had to go in twice, and it was easy to forget one copy.
 
 ## Usage
@@ -55,7 +55,7 @@ calls it.
 
 `multirunner-build.yml` checks this repo out into `.bst-ci/` next to the
 checkout of the caller, and runs the script from there. Thus **consumers must
-not keep their own copy** of this script. tromso and xfce-linux both had a
+not keep their own copy** of this script. tromso and brussels both had a
 copy. Both repos removed it when this workflow no longer used it.
 
 ### Stop chunks from a rebuild of the same expensive elements
@@ -66,7 +66,7 @@ end, and their transitive closure is almost everything. A chunk builds each
 dependency that is not already in the core CAS that it restored. Thus
 different chunks do the same work again.
 
-A measurement on tuna-os/xfce-linux found 2.6× (487 distinct elements, 1281
+A measurement on tuna-os/brussels found 2.6× (487 distinct elements, 1281
 element builds in one run). On tuna-os/tromso, the factor was 3.4×. In each
 run, 4–5 chunks built LLVM, and each LLVM build took about 2 hours.
 
@@ -208,9 +208,9 @@ Python 3 and PyYAML (`python3 -m pip install pyyaml`):
    not know if the name is real.
 
    The script found this type of gap on its first use. A new `cage.bst` for
-   tuna-os/xfce-linux#39 referred to
+   tuna-os/brussels#39 referred to
    `freedesktop-sdk.bst:components/wlroots.bst`. No other element in
-   `tromso` or `xfce-linux` used that dependency. Thus that PR needed a
+   `tromso` or `brussels` used that dependency. Thus that PR needed a
    second look before the merge.
 
 ```sh

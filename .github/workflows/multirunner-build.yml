@@ -3,7 +3,7 @@ name: Multi-runner BuildStream build (reusable)
 permissions:
   contents: read
 
-# Shared by tuna-os/tromso and tuna-os/xfce-linux (and any future BuildStream
+# Shared by tuna-os/tromso and tuna-os/brussels (and any future BuildStream
 # desktop-image repo). Splits a BuildStream build into parallel chunks across
 # free GitHub runners, sharing CAS state between jobs via GHCR-hosted
 # zstd tarballs. Owns planning + core + chunk builds; the caller is
@@ -173,7 +173,7 @@ env:
   # only one that ever sees a non-empty value here.
   BST_ARCH: ${{ inputs.arch != 'x86_64' && inputs.arch || '' }}
   # x86_64 stays unsuffixed so existing GHCR cache tags for current
-  # consumers (tromso, xfce-linux) keep resolving — only a non-x86_64 arch
+  # consumers (tromso, brussels) keep resolving — only a non-x86_64 arch
   # gets its own cache namespace.
   ARCH_SUFFIX: ${{ inputs.arch != 'x86_64' && format('-{0}', inputs.arch) || '' }}
 
