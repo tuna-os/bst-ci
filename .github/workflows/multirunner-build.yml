@@ -314,7 +314,7 @@ jobs:
         uses: extractions/setup-just@v4.0.0  # zizmor: ignore[unpinned-tools] pinning just-version would change the just release used
 
       - name: Setup ORAS
-        uses: oras-project/setup-oras@v2.0.3
+        uses: oras-project/setup-oras@v2.0.4
 
       - name: Restore BuildStream sources
         id: sources
@@ -458,7 +458,7 @@ jobs:
         uses: extractions/setup-just@v4.0.0  # zizmor: ignore[unpinned-tools] pinning just-version would change the just release used
 
       - name: Setup ORAS
-        uses: oras-project/setup-oras@v2.0.3
+        uses: oras-project/setup-oras@v2.0.4
 
       - name: Restore BuildStream sources
         id: sources
