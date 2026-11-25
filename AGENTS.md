@@ -64,6 +64,15 @@ with stub `oras`, `podman` and `zstd`. The core and chunk jobs in
 `multirunner-build.yml` still carry inline copies of these steps until they
 call the script (#59). Until then, a transport change goes in both places.
 
+`scripts/cas_bootstrap.py` is the read-only side for a developer machine: it
+downloads those archives with an anonymous pull token, checks the layer
+digest, and extracts them into a local BuildStream cache. It imports the
+reference format, the media type and the exclude list from
+`cas_transport.py`, so a change to those reaches both. It must never get a
+push path; `tests/pytest/test_cas_bootstrap.py` asserts that. Consumers fetch
+it at a pinned commit with a SHA-256 check (tromso: `just/local-cache.just`),
+so its command line is a public interface like the workflow inputs.
+
 ## Checks
 
 ```bash
