@@ -33,7 +33,6 @@ Exit codes: 0 on success, 1 on a failed or refused operation, 2 on usage.
 
 import argparse
 import hashlib
-import http.client
 import json
 import os
 import shutil
@@ -50,7 +49,6 @@ import cas_transport  # noqa: E402  (one owner for the ref format and filter)
 MANIFEST_TYPES = "application/vnd.oci.image.manifest.v1+json"
 STATE_DIR = ".cas-bootstrap"
 BLOCK = 4 * 1024 * 1024
-MAX_ATTEMPTS = 40
 # The archives expand to about three times their compressed size
 # (measured on the tromso core archive, 2026-11).
 EXPANSION = 3
@@ -65,25 +63,24 @@ def gib(count):
 
 
 def split_ref(reference):
-    """`ghcr.io/owner/repo/name:tag` -> (registry, `owner/repo/name`, tag)."""
-    registry, _, rest = reference.partition("/")
-    name, _, tag = rest.rpartition(":")
-    return registry, name, tag
+    return cas_transport.split_ref(reference)
 
 
 def stored_auth(auth_file, registry):
     """Basic credential for `registry` from a docker-style auth file."""
-    auths = json.loads(Path(auth_file).read_text()).get("auths", {})
-    for key in (registry, f"https://{registry}"):
-        if auths.get(key, {}).get("auth"):
-            return auths[key]["auth"]
-    raise SystemExit(f"{auth_file} has no credential for {registry}")
+    basic = cas_transport.stored_auth(registry, auth_file)
+    if not basic:
+        raise SystemExit(f"{auth_file} has no credential for {registry}")
+    return basic
 
 
 def pull_token(registry, name, auth_file=None):
-    """Registry token limited to `pull` on one repository; anonymous by default."""
+    """Registry token limited to `pull` on one repository; anonymous by default.
+
+    Stored credentials are read only when `auth_file` names a file.
+    """
     request = urllib.request.Request(
-        f"https://{registry}/token?service={registry}&scope=repository:{name}:pull"
+        f"{cas_transport.registry_url(registry)}/token?service={registry}&scope=repository:{name}:pull"
     )
     if auth_file:
         request.add_header("Authorization", f"Basic {stored_auth(auth_file, registry)}")
@@ -96,7 +93,7 @@ def fetch_manifest(reference, auth_file=None):
     registry, name, tag = split_ref(reference)
     try:
         token = pull_token(registry, name, auth_file)
-        request = urllib.request.Request(f"https://{registry}/v2/{name}/manifests/{tag}")
+        request = urllib.request.Request(f"{cas_transport.registry_url(registry)}/v2/{name}/manifests/{tag}")
         request.add_header("Authorization", f"Bearer {token}")
         request.add_header("Accept", MANIFEST_TYPES)
         with urllib.request.urlopen(request, timeout=60) as response:
@@ -109,10 +106,7 @@ def fetch_manifest(reference, auth_file=None):
 
 def cas_layer(manifest):
     """(digest, size) of the CAS layer in a manifest."""
-    for layer in manifest.get("layers", []):
-        if layer.get("mediaType") == cas_transport.MEDIA_TYPE:
-            return layer["digest"], int(layer["size"])
-    raise SystemExit(f"manifest has no {cas_transport.MEDIA_TYPE} layer")
+    return cas_transport.cas_layer(json.dumps(manifest))
 
 
 def file_sha256(path):
@@ -128,11 +122,10 @@ def download(reference, digest, size, target, auth_file=None, opener=None, pause
 
     The registry cuts multi-gigabyte downloads every few minutes, and a
     developer can stop a download at any time. Both cases continue with an
-    HTTP Range request from the size of the partial file.
+    HTTP Range request from the size of the partial file. The transfer is
+    cas_transport.stream_blob, the same code the CI restore uses.
     """
-    opener = opener or urllib.request.urlopen
     registry, name, _ = split_ref(reference)
-    url = f"https://{registry}/v2/{name}/blobs/{digest}"
     part = Path(f"{target}.part")
     offset = part.stat().st_size if part.exists() else 0
     if offset > size:
@@ -140,39 +133,19 @@ def download(reference, digest, size, target, auth_file=None, opener=None, pause
         offset = 0
     if offset:
         log(f"resuming at {gib(offset)} of {gib(size)}")
-    token = pull_token(registry, name, auth_file)
-    attempt = 0
     started = time.monotonic()
-    received = 0
     with open(part, "ab") as out:
-        while offset < size:
-            attempt += 1
-            if attempt > MAX_ATTEMPTS:
-                raise SystemExit(f"download stopped at byte {offset} of {size} after {MAX_ATTEMPTS} attempts")
-            request = urllib.request.Request(url)
-            # Not forwarded on the redirect to the signed storage URL.
-            request.add_unredirected_header("Authorization", f"Bearer {token}")
-            if offset:
-                request.add_header("Range", f"bytes={offset}-")
-            try:
-                with opener(request, timeout=120) as response:
-                    if offset and response.status != 206:
-                        raise SystemExit(f"server ignored Range (HTTP {response.status}); cannot resume")
-                    while offset < size:
-                        block = response.read(min(BLOCK, size - offset))
-                        if not block:
-                            break
-                        out.write(block)
-                        offset += len(block)
-                        received += len(block)
-            except urllib.error.HTTPError as error:
-                if error.code == 401:
-                    token = pull_token(registry, name, auth_file)
-                log(f"HTTP {error.code} at byte {offset} (attempt {attempt}); retrying")
-                pause(min(30, 2 * attempt))
-            except (OSError, http.client.HTTPException) as error:
-                log(f"connection cut at byte {offset} (attempt {attempt}): {error}; resuming")
-                pause(min(30, 2 * attempt))
+        cas_transport.stream_blob(
+            reference,
+            digest,
+            size,
+            out,
+            offset=offset,
+            token_source=lambda: pull_token(registry, name, auth_file),
+            opener=opener,
+            pause=pause,
+        )
+    received = size - offset
     seconds = max(time.monotonic() - started, 0.001)
     log(f"downloaded {gib(received)} in {seconds:.0f}s ({received / seconds / 1024**2:.0f} MiB/s)")
     found = file_sha256(part)
