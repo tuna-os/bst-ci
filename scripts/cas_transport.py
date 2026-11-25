@@ -212,7 +212,10 @@ def restore(reference, cache_dir, pause=time.sleep):
         return
     digest, size = cas_layer(manifest.stdout)
     unzstd = subprocess.Popen(["zstd", "-d", "-c", "-T0"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-    untar = subprocess.Popen(["tar", "-xf", "-", "-C", cache_dir, *tar_excludes()], stdin=unzstd.stdout)
+    # Not `tar`: cas_untar.py refuses an object whose content is not its name.
+    untar = subprocess.Popen(
+        [sys.executable, str(Path(__file__).with_name("cas_untar.py")), str(cache_dir)], stdin=unzstd.stdout
+    )
     unzstd.stdout.close()
     found = None
     error = None
@@ -228,7 +231,7 @@ def restore(reference, cache_dir, pause=time.sleep):
     if found != digest:
         raise SystemExit(f"restore of {reference} failed: stream is {found}, the manifest says {digest}")
     if any(codes):
-        raise SystemExit(f"restore of {reference} failed (tar, zstd exit codes: {codes})")
+        raise SystemExit(f"restore of {reference} failed (untar, zstd exit codes: {codes})")
 
 
 def stop_builders(bst2_image, workspace):
