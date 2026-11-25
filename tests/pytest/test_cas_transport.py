@@ -128,9 +128,14 @@ def stubs(tmp_path):
     return Stubs()
 
 
+# The name of a CAS object is the SHA-256 of its content.
+OBJECT = "cas/objects/" + hashlib.sha256(b"object").hexdigest()
+OBJECT = OBJECT[:14] + "/" + OBJECT[14:]
+
+
 def make_cache(root):
     files = {
-        "cas/objects/ab/cdef": "object",
+        OBJECT: "object",
         "artifacts/refs/tromso/core": "ref",
         "sources/git/repo": "source",
         "logs/build.log": "log",
@@ -155,7 +160,7 @@ def tar_bytes(source):
     return buffer.getvalue()
 
 
-KEPT = ["artifacts/refs/tromso/core", "cas/objects/ab/cdef"]
+KEPT = ["artifacts/refs/tromso/core", OBJECT]
 
 
 # ── reference format ────────────────────────────────────────────────

@@ -73,6 +73,12 @@ cannot continue it, and that failed brussels' nightly from 2026-11-02 to
 the SHA-256 of the stream against the layer digest. Do not go back to a
 download that cannot resume.
 
+The restore does not use `tar` either. `scripts/cas_untar.py` hashes each CAS
+object and drops one that does not match its name. Cut restores before #130
+left truncated objects, each archive carried them on, and a short libLLVM
+killed clang with SIGBUS (brussels run 45560680452). BuildStream trusts the
+name, so nothing else finds such an object.
+
 `scripts/cas_bootstrap.py` is the read-only side for a developer machine: it
 downloads those archives with an anonymous pull token, checks the layer
 digest, and extracts them into a local BuildStream cache. It imports the
