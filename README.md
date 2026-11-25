@@ -104,6 +104,11 @@ Legacy source archives, logs and temporary CAS files do not enter the restore.
 This avoids the extra disk copy that exhausted an Athens runner during restore.
 A missing cache leads to a fresh build; a corrupt download or extraction fails.
 
+The registry can stop a large download before the end. The restore then
+continues from the last byte with an HTTP `Range` request, and the job does
+not fail. The restore calculates the SHA-256 of the full stream. If the value
+is not the layer digest in the manifest, the step fails.
+
 Enable `soft_chunk_budget` when chunks often reach their budget but still
 make useful progress. A chunk that times out publishes only its
 `:latest` cache tag, which moves forward with each run. It does not publish

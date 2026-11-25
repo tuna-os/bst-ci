@@ -60,9 +60,18 @@ way.
 `application/vnd.buildstream.cas.tar.zst` media type, the archive/restore
 exclude list, the streamed restore, the workspace-scoped builder stop and the
 push retry policy. `tests/pytest/test_cas_transport.py` covers it offline
-with stub `oras`, `podman` and `zstd`. The core and chunk jobs in
-`multirunner-build.yml` still carry inline copies of these steps until they
-call the script (#59). Until then, a transport change goes in both places.
+with stub `oras`, `podman` and `zstd`, and with a loopback HTTP registry for
+the blob download. The three restore steps of `multirunner-build.yml` call
+`cas_transport.py restore`; the core and chunk jobs check the script out at
+`job.workflow_sha` into `.bst-ci/`. The archive and push steps are still
+inline copies (#59), so a change to those goes in both places.
+
+The restore does not use `oras blob fetch`. GHCR cuts a multi-gigabyte blob
+download mid-stream ("stream error: stream ID 1; PROTOCOL_ERROR"), `oras`
+cannot continue it, and that failed brussels' nightly from 2026-11-02 to
+2026-11-24. `stream_blob` continues with HTTP `Range` and the restore checks
+the SHA-256 of the stream against the layer digest. Do not go back to a
+download that cannot resume.
 
 `scripts/cas_bootstrap.py` is the read-only side for a developer machine: it
 downloads those archives with an anonymous pull token, checks the layer

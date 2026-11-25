@@ -297,6 +297,17 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+
+      # scripts/cas_transport.py, at the revision of this workflow (the
+      # planning job validated it). The restore steps below run it.
+      - name: Checkout bst-ci scripts
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: tuna-os/bst-ci
+          ref: ${{ job.workflow_sha }}
+          path: .bst-ci
+          persist-credentials: false
+
       - run: podman pull "$BST2_IMAGE"
 
       - name: Setup Just
@@ -326,16 +337,10 @@ jobs:
           mkdir -p ~/.cache/buildstream
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           CORE_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-core:latest"
-          if manifest=$(oras manifest fetch "$CORE_REF"); then
-            digest=$(jq -er '.layers[] | select(.mediaType == "application/vnd.buildstream.cas.tar.zst") | .digest' <<< "$manifest")
-            oras blob fetch --output - "${CORE_REF%:*}@${digest}" |
-              zstd -d -c -T0 |
-              tar -xf - -C "$HOME/.cache/buildstream" \
-                --exclude='./sources' --exclude='./logs' \
-                --exclude='./cas/staging' --exclude='./cas/tmp' --exclude='*.sock'
-          else
-            echo "No existing ${IMAGE_NAME} core cache, starting fresh."
-          fi
+          # cas_transport.py continues the download after the registry cuts
+          # the stream, and fails the step if the bytes are not the layer
+          # digest. `oras blob fetch` did neither (stream error PROTOCOL_ERROR).
+          python3 .bst-ci/scripts/cas_transport.py restore "$CORE_REF" "$HOME/.cache/buildstream"
 
       - name: Build Core
         env:
@@ -436,6 +441,17 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+
+      # scripts/cas_transport.py, at the revision of this workflow (the
+      # planning job validated it). The restore steps below run it.
+      - name: Checkout bst-ci scripts
+        uses: actions/checkout@v7.0.1
+        with:
+          repository: tuna-os/bst-ci
+          ref: ${{ job.workflow_sha }}
+          path: .bst-ci
+          persist-credentials: false
+
       - run: podman pull "$BST2_IMAGE"
 
       - name: Setup Just
@@ -478,16 +494,10 @@ jobs:
           mkdir -p ~/.cache/buildstream
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           CORE_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-core:latest"
-          if manifest=$(oras manifest fetch "$CORE_REF"); then
-            digest=$(jq -er '.layers[] | select(.mediaType == "application/vnd.buildstream.cas.tar.zst") | .digest' <<< "$manifest")
-            oras blob fetch --output - "${CORE_REF%:*}@${digest}" |
-              zstd -d -c -T0 |
-              tar -xf - -C "$HOME/.cache/buildstream" \
-                --exclude='./sources' --exclude='./logs' \
-                --exclude='./cas/staging' --exclude='./cas/tmp' --exclude='*.sock'
-          else
-            echo "No existing ${IMAGE_NAME} core cache, starting fresh."
-          fi
+          # cas_transport.py continues the download after the registry cuts
+          # the stream, and fails the step if the bytes are not the layer
+          # digest. `oras blob fetch` did neither (stream error PROTOCOL_ERROR).
+          python3 .bst-ci/scripts/cas_transport.py restore "$CORE_REF" "$HOME/.cache/buildstream"
 
       - name: Restore Chunk Cache (fallback to latest)
         if: steps.cache_check.outputs.cache_hit != 'true'
@@ -495,17 +505,10 @@ jobs:
           set -euo pipefail
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           LATEST_REF="ghcr.io/${REPO_LOWER}/cache-${IMAGE_NAME}${ARCH_SUFFIX}-${{ matrix.chunk }}:latest"
-          if manifest=$(oras manifest fetch "$LATEST_REF"); then
-            digest=$(jq -er '.layers[] | select(.mediaType == "application/vnd.buildstream.cas.tar.zst") | .digest' <<< "$manifest")
-            mkdir -p ~/.cache/buildstream
-            oras blob fetch --output - "${LATEST_REF%:*}@${digest}" |
-              zstd -d -c -T0 |
-              tar -xf - -C "$HOME/.cache/buildstream" \
-                --exclude='./sources' --exclude='./logs' \
-                --exclude='./cas/staging' --exclude='./cas/tmp' --exclude='*.sock'
-          else
-            echo "No existing ${IMAGE_NAME} chunk cache, starting fresh."
-          fi
+          # cas_transport.py continues the download after the registry cuts
+          # the stream, and fails the step if the bytes are not the layer
+          # digest. `oras blob fetch` did neither (stream error PROTOCOL_ERROR).
+          python3 .bst-ci/scripts/cas_transport.py restore "$LATEST_REF" "$HOME/.cache/buildstream"
 
       - name: Build Chunk
         id: build

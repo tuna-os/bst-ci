@@ -6,6 +6,7 @@ image is needed. The `zstd` stub passes bytes through unchanged, so the
 archives in these tests are plain tar streams.
 """
 
+import hashlib
 import importlib.util
 import io
 import json
@@ -109,6 +110,9 @@ def stubs(tmp_path):
                 "STUB_CONFIG": str(config_path),
                 "STUB_LOG": str(log_path),
                 "CAS_PUSH_RETRY_DELAY": "0",
+                "CAS_FETCH_RETRY_DELAY": "0",
+                "DOCKER_CONFIG": str(tmp_path / "no-docker-config"),
+                "HOME": str(tmp_path),
             }
             return subprocess.run(
                 [sys.executable, str(SCRIPT_PATH), *map(str, args)],
@@ -186,31 +190,149 @@ def test_exists_reports_manifest_presence(stubs):
     assert stubs.run("exists", REF.replace("core", "chunk1")).returncode == 1
 
 
-# ── restore ─────────────────────────────────────────────────────────
+# ── restore ───────────────────────────────────────────────────
+#
+# The manifest still comes from the `oras` stub. The blob comes over HTTP
+# from a registry on 127.0.0.1, so these tests run the real resume code.
 
 
-def test_restore_extracts_the_cas_layer_without_excluded_paths(stubs, tmp_path):
+class Registry:
+    """A loopback registry: a token endpoint and blobs with Range support."""
+
+    def __init__(self):
+        import http.server
+        import threading
+
+        registry = self
+        self.blobs = {}
+        self.cut_after = None  # serve at most this many bytes per connection
+        self.fail_first = 0  # answer this many blob requests with HTTP 502
+        self.ranges = []
+        self.authorizations = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                if self.path.startswith("/token"):
+                    registry.authorizations.append(self.headers.get("Authorization"))
+                    body = json.dumps({"token": "t"}).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                digest = self.path.rsplit("/", 1)[-1]
+                data = registry.blobs.get(digest)
+                header = self.headers.get("Range")
+                registry.ranges.append(header)
+                if data is None:
+                    self.send_error(404)
+                    return
+                if registry.fail_first:
+                    registry.fail_first -= 1
+                    self.send_error(502)
+                    return
+                start = int(header.removeprefix("bytes=").rstrip("-")) if header else 0
+                body = data[start:]
+                self.send_response(206 if header else 200)
+                # The full length is announced, then the connection is cut short.
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                if registry.cut_after is not None:
+                    body = body[: registry.cut_after]
+                self.wfile.write(body)
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.host = f"127.0.0.1:{self.server.server_address[1]}"
+        self.ref = f"{self.host}/tuna-os/tromso/cache-tromso-core:latest"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def publish(self, stubs, data):
+        digest = "sha256:" + hashlib.sha256(data).hexdigest()
+        self.blobs[digest] = data
+        layer = {"mediaType": cas_transport.MEDIA_TYPE, "digest": digest, "size": len(data)}
+        config = {"mediaType": "application/vnd.oci.image.config.v1+json", "digest": "sha256:0", "size": 2}
+        stubs.config = {"manifests": {self.ref: {"layers": [config, layer]}}}
+        return digest
+
+
+@pytest.fixture
+def registry():
+    reg = Registry()
+    yield reg
+    reg.server.shutdown()
+
+
+def test_restore_extracts_the_cas_layer_without_excluded_paths(stubs, registry, tmp_path):
     source = tmp_path / "source"
     make_cache(source)
-    blob = tmp_path / "blob"
-    blob.write_bytes(tar_bytes(source))
-    stubs.config = {
-        "manifests": {
-            REF: {
-                "layers": [
-                    {"mediaType": "application/vnd.oci.image.config.v1+json", "digest": "sha256:0"},
-                    {"mediaType": cas_transport.MEDIA_TYPE, "digest": DIGEST},
-                ]
-            }
-        },
-        "blobs": {f"{REF.rsplit(':', 1)[0]}@{DIGEST}": str(blob)},
-    }
+    registry.publish(stubs, tar_bytes(source))
     dest = tmp_path / "dest"
 
-    result = stubs.run("restore", REF, dest)
+    result = stubs.run("restore", registry.ref, dest)
 
     assert result.returncode == 0, result.stderr
     assert files_under(dest) == KEPT
+    assert registry.ranges == [None]
+    assert not [c for c in stubs.calls("oras") if c[1] == "blob"], "the blob must not come through oras"
+
+
+def test_restore_resumes_after_the_registry_cuts_the_stream(stubs, registry, tmp_path):
+    """GHCR cuts large blobs mid-stream; the restore must continue, not fail."""
+    source = tmp_path / "source"
+    make_cache(source)
+    data = tar_bytes(source)
+    registry.publish(stubs, data)
+    registry.cut_after = 3000
+    dest = tmp_path / "dest"
+
+    result = stubs.run("restore", registry.ref, dest)
+
+    assert result.returncode == 0, result.stderr
+    assert files_under(dest) == KEPT
+    assert len(registry.ranges) > 1
+    assert registry.ranges[:2] == [None, "bytes=3000-"]
+    assert "complete after" in result.stderr
+
+
+def test_restore_retries_a_registry_error(stubs, registry, tmp_path):
+    source = tmp_path / "source"
+    make_cache(source)
+    registry.publish(stubs, tar_bytes(source))
+    registry.fail_first = 2
+    dest = tmp_path / "dest"
+
+    result = stubs.run("restore", registry.ref, dest)
+
+    assert result.returncode == 0, result.stderr
+    assert files_under(dest) == KEPT
+
+
+def test_restore_fails_when_the_stream_is_not_the_manifest_digest(stubs, registry, tmp_path):
+    source = tmp_path / "source"
+    make_cache(source)
+    data = tar_bytes(source)
+    digest = registry.publish(stubs, data)
+    registry.blobs[digest] = data[:-1] + bytes([data[-1] ^ 1])
+
+    result = stubs.run("restore", registry.ref, tmp_path / "dest")
+
+    assert result.returncode != 0
+    assert "the manifest says" in result.stderr
+
+
+def test_restore_uses_the_login_that_oras_stored(stubs, registry, tmp_path):
+    source = tmp_path / "source"
+    make_cache(source)
+    registry.publish(stubs, tar_bytes(source))
+    config_dir = tmp_path / "no-docker-config"
+    config_dir.mkdir()
+    (config_dir / "config.json").write_text(json.dumps({"auths": {registry.host: {"auth": "dTpw"}}}))
+
+    assert stubs.run("restore", registry.ref, tmp_path / "dest").returncode == 0
+    assert registry.authorizations == ["Basic dTpw"]
 
 
 def test_restore_without_manifest_is_a_cold_start(stubs, tmp_path):
@@ -221,7 +343,6 @@ def test_restore_without_manifest_is_a_cold_start(stubs, tmp_path):
     assert result.returncode == 0
     assert "starting fresh" in result.stdout
     assert dest.is_dir()
-    assert not [c for c in stubs.calls("oras") if c[1] == "blob"]
 
 
 def test_restore_fails_when_manifest_has_no_cas_layer(stubs, tmp_path):
@@ -233,15 +354,15 @@ def test_restore_fails_when_manifest_has_no_cas_layer(stubs, tmp_path):
     assert cas_transport.MEDIA_TYPE in result.stderr
 
 
-def test_restore_fails_when_the_blob_fetch_fails(stubs, tmp_path):
-    stubs.config = {
-        "manifests": {REF: {"layers": [{"mediaType": cas_transport.MEDIA_TYPE, "digest": DIGEST}]}},
-        "blob_rc": 1,
-    }
+def test_restore_fails_when_the_blob_is_missing(stubs, registry, tmp_path, monkeypatch):
+    registry.publish(stubs, b"x" * 10)
+    registry.blobs.clear()
 
-    result = stubs.run("restore", REF, tmp_path / "dest")
+    result = stubs.run("restore", registry.ref, tmp_path / "dest")
 
     assert result.returncode != 0
+    assert "HTTP 404" in result.stderr
+    assert len(registry.ranges) == 1, "a missing blob is not retried"
 
 
 # ── stop-builders ───────────────────────────────────────────────────
@@ -288,18 +409,15 @@ def test_archive_omits_excluded_paths(stubs, tmp_path):
     assert members == KEPT
 
 
-def test_archive_round_trips_through_restore(stubs, tmp_path):
+def test_archive_round_trips_through_restore(stubs, registry, tmp_path):
     cache = tmp_path / "cache"
     make_cache(cache)
     out = tmp_path / "out"
     out.mkdir()
     assert stubs.run("archive", "bst2:pin", cache, out, "cas.tar.zst").returncode == 0
-    stubs.config = {
-        "manifests": {REF: {"layers": [{"mediaType": cas_transport.MEDIA_TYPE, "digest": DIGEST}]}},
-        "blobs": {f"{REF.rsplit(':', 1)[0]}@{DIGEST}": str(out / "cas.tar.zst")},
-    }
+    registry.publish(stubs, (out / "cas.tar.zst").read_bytes())
 
-    assert stubs.run("restore", REF, tmp_path / "dest").returncode == 0
+    assert stubs.run("restore", registry.ref, tmp_path / "dest").returncode == 0
     assert files_under(tmp_path / "dest") == KEPT
 
 
