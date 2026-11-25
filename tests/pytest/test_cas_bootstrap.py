@@ -1,8 +1,8 @@
 """Tests for scripts/cas_bootstrap.py.
 
 Offline: the registry is replaced by fake `fetch_manifest` and `opener`
-functions, and the archives are small tar files. The extraction test needs
-real `zstd` and `tar` and is skipped without them.
+functions, and the archives are small tar files. The extraction tests need
+real `zstd` and are skipped without it.
 """
 
 import argparse
@@ -157,11 +157,22 @@ def test_download_refuses_a_server_that_ignores_range(tmp_path):
         )
 
 
+BLOB = b"blob"
+DAMAGED = b"short"
+
+
+def object_path(data):
+    digest = hashlib.sha256(data).hexdigest()
+    return f"cas/objects/{digest[:2]}/{digest[2:]}"
+
+
 def make_archive(tmp_path):
-    """A zstd tar of a tiny cache tree, with one path the filter must drop."""
+    """A zstd tar of a tiny cache tree, with one path the filter must drop
+    and one object whose content is not its name."""
     tree = tmp_path / "tree"
-    (tree / "cas/objects/ab").mkdir(parents=True)
-    (tree / "cas/objects/ab/cdef").write_text("blob")
+    for path, data in ((object_path(BLOB), BLOB), (object_path(b"whole object"), DAMAGED)):
+        (tree / path).parent.mkdir(parents=True, exist_ok=True)
+        (tree / path).write_bytes(data)
     (tree / "artifacts/refs/tromso/x").mkdir(parents=True)
     (tree / "artifacts/refs/tromso/x/key").write_text("ref")
     (tree / "sources").mkdir()
@@ -174,9 +185,7 @@ def make_archive(tmp_path):
     return packed.read_bytes()
 
 
-needs_zstd = pytest.mark.skipif(
-    not (shutil.which("zstd") and shutil.which("tar")), reason="needs zstd and tar"
-)
+needs_zstd = pytest.mark.skipif(not shutil.which("zstd"), reason="needs zstd")
 
 
 @needs_zstd
@@ -196,7 +205,8 @@ def test_pull_stage_seeds_then_skips(tmp_path, monkeypatch):
 
     row = cas_bootstrap.pull_stage(REF, "core", cache, pull_args())
     assert row["status"].startswith("seeded")
-    assert (cache / "cas/objects/ab/cdef").read_text() == "blob"
+    assert (cache / object_path(BLOB)).read_bytes() == BLOB
+    assert not (cache / object_path(b"whole object")).exists(), "a damaged object must be dropped"
     assert (cache / "artifacts/refs/tromso/x/key").read_text() == "ref"
     assert not (cache / "sources").exists(), "the transport filter must apply"
     stamp = json.loads((cache / ".cas-bootstrap/core.json").read_text())
@@ -222,6 +232,19 @@ def test_pull_stage_reseeds_when_the_published_digest_changes(tmp_path, monkeypa
     row = cas_bootstrap.pull_stage(REF, "core", cache, pull_args(keep_archives=True))
     assert row["status"].startswith("seeded")
     assert len(list((cache / ".cas-bootstrap").glob("*.tar.zst"))) == 1
+
+
+def test_pull_stage_needs_cas_untar_before_downloading(tmp_path, monkeypatch):
+    monkeypatch.setattr(cas_bootstrap, "CAS_UNTAR", tmp_path / "cas_untar.py")
+    monkeypatch.setattr(cas_bootstrap, "fetch_manifest", lambda *a: pytest.fail("fetched a manifest"))
+    with pytest.raises(SystemExit, match="cas_untar.py is missing"):
+        cas_bootstrap.pull_stage(REF, "core", tmp_path, pull_args())
+
+
+def test_extraction_never_uses_plain_tar():
+    source = (SCRIPTS / "cas_bootstrap.py").read_text()
+    assert '"tar"' not in source
+    assert cas_bootstrap.CAS_UNTAR == SCRIPTS / "cas_untar.py"
 
 
 def test_pull_stage_refuses_when_the_disk_is_too_small(tmp_path, monkeypatch):

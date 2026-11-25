@@ -158,17 +158,24 @@ def download(reference, digest, size, target, auth_file=None, opener=None, pause
     return seconds
 
 
+# The untar of the CI restore. The layer digest proves the download is the
+# published archive, not that each object in it is whole: archives carried
+# truncated objects from cut restores on (brussels run 45560680452).
+CAS_UNTAR = Path(__file__).with_name("cas_untar.py")
+
+
 def extract(archive, cache_dir):
-    """Extract a verified archive into `cache_dir` with the transport filter."""
+    """Extract a verified archive into `cache_dir` as the CI restore does.
+
+    cas_untar.py applies the transport filter and drops an object whose
+    content is not its name.
+    """
     unzstd = subprocess.Popen(["zstd", "-d", "-c", "-T0", str(archive)], stdout=subprocess.PIPE)
-    untar = subprocess.Popen(
-        ["tar", "-xf", "-", "-C", str(cache_dir), "--no-same-owner", *cas_transport.tar_excludes()],
-        stdin=unzstd.stdout,
-    )
+    untar = subprocess.Popen([sys.executable, str(CAS_UNTAR), str(cache_dir)], stdin=unzstd.stdout)
     unzstd.stdout.close()
     codes = [untar.wait(), unzstd.wait()]
     if any(codes):
-        raise SystemExit(f"extraction of {archive} failed (tar, zstd exit codes: {codes})")
+        raise SystemExit(f"extraction of {archive} failed (untar, zstd exit codes: {codes})")
 
 
 def read_stamp(state, stage):
@@ -180,6 +187,9 @@ def read_stamp(state, stage):
 
 def pull_stage(reference, stage, cache_dir, args):
     """Seed one stage. Returns a summary row."""
+    if not CAS_UNTAR.is_file():
+        # Before the download: an archive is many gigabytes.
+        raise SystemExit(f"{CAS_UNTAR.name} is missing beside this script; fetch it from the same commit")
     state = Path(cache_dir) / STATE_DIR
     state.mkdir(parents=True, exist_ok=True)
     manifest = fetch_manifest(reference, args.auth_file)
@@ -258,9 +268,8 @@ def command_list(args):
 
 
 def command_pull(args):
-    for tool in ("zstd", "tar"):
-        if not shutil.which(tool):
-            raise SystemExit(f"{tool} is required and was not found on PATH")
+    if not shutil.which("zstd"):
+        raise SystemExit("zstd is required and was not found on PATH")
     os.makedirs(args.cache_dir, exist_ok=True)
     rows = [pull_stage(reference, stage, args.cache_dir, args) for stage, reference in stage_refs(args)]
     for row in rows:

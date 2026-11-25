@@ -265,7 +265,7 @@ publishes into the BuildStream cache of a developer machine. After that,
 `bst build` rebuilds only the elements whose cache key is different from the
 published key. The script reads the registry. It cannot write to it.
 
-It needs Python 3, `zstd` and `tar`. It does not need `oras` or a login. The
+It needs Python 3 and `zstd`. It does not need `oras` or a login. The
 cache packages of `tromso` and `xfce-linux` are public. The script asks GHCR
 for an anonymous token with the `pull` scope only.
 
@@ -286,6 +286,9 @@ The script gives these guarantees:
 - **Integrity**: the script calculates the SHA-256 of the downloaded file.
   It extracts the archive only when the value equals the layer digest in the
   registry manifest.
+- **Whole objects**: the script extracts with `scripts/cas_untar.py`, as the
+  CI restore does. It drops a CAS object whose content is not its name. The
+  layer digest cannot find such an object, because the archive was made with it.
 - **Resume**: a download that stops continues from the last byte with an HTTP
   `Range` request. The registry stops a large download after some minutes,
   and `oras` cannot continue it. Thus the script does not call `oras`.

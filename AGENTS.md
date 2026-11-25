@@ -83,10 +83,14 @@ name, so nothing else finds such an object.
 downloads those archives with an anonymous pull token, checks the layer
 digest, and extracts them into a local BuildStream cache. It imports the
 reference format, the media type and the exclude list from
-`cas_transport.py`, so a change to those reaches both. It must never get a
-push path; `tests/pytest/test_cas_bootstrap.py` asserts that. Consumers fetch
-it at a pinned commit with a SHA-256 check (tromso: `just/local-cache.just`),
-so its command line is a public interface like the workflow inputs.
+`cas_transport.py`, so a change to those reaches both. It extracts with
+`cas_untar.py`, the same as the CI restore, and stops before a download when
+that file is missing. It must never get a push path;
+`tests/pytest/test_cas_bootstrap.py` asserts that. Consumers fetch it at a
+pinned commit with a SHA-256 check (tromso: `just/local-cache.just`), so its
+command line is a public interface like the workflow inputs. Its file set is
+part of that interface: a consumer fetches `cas_bootstrap.py`,
+`cas_transport.py` and `cas_untar.py` from one commit.
 
 ## Checks
 
